@@ -1,0 +1,4 @@
+-- Baseline no-op migration (Story 1.0).
+-- The schema defines no models yet; all models arrive in Story 1.1's
+-- single reviewed migration per ARCH-2. This migration exists so
+-- `prisma migrate deploy` runs on start and the pipeline is proven.

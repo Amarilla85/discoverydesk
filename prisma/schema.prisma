@@ -1,0 +1,13 @@
+// DiscoveryDesk — Prisma schema
+// Story 1.0: datasource + generator only. Story 1.1 defines all models
+// (User, Account, Session, Discovery, Phase, Collaborator, Comment,
+// Signoff, Revision) in a single reviewed migration per ARCH-2.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
