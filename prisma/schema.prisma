@@ -190,7 +190,7 @@ model Signoff {
   id        String       @id @default(cuid())
   phaseId   String
   userId    String
-  timestamp DateTime
+  timestamp DateTime     @default(now())
   type      SignoffType
   comment   String?
   createdAt DateTime     @default(now())
