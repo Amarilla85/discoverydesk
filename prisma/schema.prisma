@@ -1,7 +1,8 @@
 // DiscoveryDesk — Prisma schema
-// Story 1.0: datasource + generator only. Story 1.1 defines all models
-// (User, Account, Session, Discovery, Phase, Collaborator, Comment,
-// Signoff, Revision) in a single reviewed migration per ARCH-2.
+// Story 1.1: all models defined in this single migration per ARCH-2 (solo-dev,
+// 6-week build — one reviewed schema beats incremental migrations mid-sprint).
+// NextAuth adapter models follow the exact @auth/prisma-adapter contract; the
+// magic-link email provider (Stories 1.0/1.2) persists tokens in VerificationToken.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,4 +11,210 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// --- Enums (AD-5: exactly six phase types, no phantom "Validation") ---
+
+enum PhaseType {
+  Persona
+  PainGain
+  ValueProp
+  BusinessModel
+  Vision
+  BusinessCase
+}
+
+// AD-6 two-level state machine: Discovery has a lifecycle, each Phase its own
+// state. Two enums (identical values today) so they can diverge independently.
+enum PhaseState {
+  Draft
+  InReview
+  Approved
+}
+
+enum LifecycleState {
+  Draft
+  InReview
+  Approved
+}
+
+enum CollaboratorRole {
+  BA
+  Stakeholder
+}
+
+// Values lowercase per spec (epics Story 1.1: "type (approve/requestChanges)").
+enum SignoffType {
+  approve
+  requestChanges
+}
+
+// --- NextAuth adapter models (exact @auth/prisma-adapter shapes) ---
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+
+  discoveries      Discovery[]
+  collaborations   Collaborator[]
+  invitedCollabs   Collaborator[] @relation("InvitedBy")
+  comments         Comment[]
+  signoffs         Signoff[]
+  revisions        Revision[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Required by the email (magic-link) provider — sign-in tokens live here.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- Domain models ---
+
+model Discovery {
+  id             String         @id @default(cuid())
+  name           String
+  ownerId        String
+  lifecycleState LifecycleState @default(Draft)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  owner         User           @relation(fields: [ownerId], references: [id])
+  phases        Phase[]
+  collaborators Collaborator[]
+
+  @@index([ownerId])
+}
+
+// FR1: exactly one Phase per type per Discovery — the unique constraint makes
+// duplicate-phase bugs impossible at the DB level and keeps gate lookups fast.
+model Phase {
+  id           String     @id @default(cuid())
+  discoveryId  String
+  phaseType    PhaseType
+  state        PhaseState @default(Draft)
+  // AD-7: phase output is validated JSON (per-phase Zod schema, Epic 2) —
+  // no normalized PainPoint/GainPoint tables.
+  output       Json?
+  signoffData  Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  discovery Discovery @relation(fields: [discoveryId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  signoffs  Signoff[]
+  revisions Revision[]
+
+  @@unique([discoveryId, phaseType])
+}
+
+// Invite model: userId is null while the invite is pending; claimed (userId
+// set) on first sign-in with a matching email. No Invitation table, no token —
+// magic-link sign-in already proves email ownership.
+model Collaborator {
+  id          String           @id @default(cuid())
+  discoveryId String
+  userId      String?
+  email       String
+  role        CollaboratorRole
+  invitedById String
+  createdAt   DateTime         @default(now())
+
+  discovery Discovery @relation(fields: [discoveryId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  invitedBy User      @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([discoveryId, email])
+  @@index([userId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  phaseId   String
+  authorId  String
+  body      String
+  resolved  Boolean  @default(false)
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  phase    Phase    @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+  parent   Comment? @relation("CommentThread", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentThread")
+
+  @@index([phaseId])
+  @@index([authorId])
+}
+
+model Signoff {
+  id        String       @id @default(cuid())
+  phaseId   String
+  userId    String
+  timestamp DateTime
+  type      SignoffType
+  comment   String?
+  createdAt DateTime     @default(now())
+
+  phase Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([phaseId])
+  @@index([userId])
+}
+
+// Created when an Approved phase is reopened (Story 2.12); previous output
+// preserved for the revision history view.
+model Revision {
+  id            String   @id @default(cuid())
+  phaseId       String
+  previousOutput Json
+  reopenedById  String
+  reopenedAt    DateTime @default(now())
+  note          String?
+
+  phase     Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  reopenedBy User  @relation(fields: [reopenedById], references: [id])
+
+  @@index([phaseId])
+  @@index([reopenedById])
 }
