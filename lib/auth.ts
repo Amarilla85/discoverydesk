@@ -1,5 +1,19 @@
 import NextAuth from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { EmailConfig } from "@auth/core/providers/email";
+import { prisma } from "@/lib/prisma";
+
+// Story 1.2 (deferred from Story 1.0 review): fail fast at module load when a
+// required auth secret is missing — otherwise a broken env fails opaquely at
+// first request (NextAuth secret fallback, Resend 401/422).
+for (const envVar of ["AUTH_SECRET", "RESEND_API_KEY", "EMAIL_FROM"] as const) {
+  if (!process.env[envVar]) {
+    throw new Error(
+      `Missing required environment variable: ${envVar}. ` +
+        `Set it in .env.local (dev) or the Railway service variables (production).`
+    );
+  }
+}
 
 // NextAuth v5 (beta) — magic-link email provider via Resend HTTP API (AD-2).
 // No password auth, no OAuth in MVP.
@@ -12,8 +26,9 @@ import type { EmailConfig } from "@auth/core/providers/email";
 // options; only `sendVerificationRequest` (Resend HTTP API) and `from`
 // are provided, which is all a `type: "email"` provider requires.
 //
-// The Prisma adapter is intentionally absent until Story 1.1/1.2 add the
-// User/Account/Session models and the sign-in page.
+// The Prisma adapter (wired below since Story 1.2) owns token storage and
+// consumption via the VerificationToken model; with an adapter present,
+// NextAuth defaults to database sessions.
 const ResendEmailProvider: EmailConfig = {
   id: "email",
   type: "email",
@@ -57,6 +72,11 @@ const ResendEmailProvider: EmailConfig = {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET,
+  adapter: PrismaAdapter(prisma), // database sessions + VerificationToken persistence (Story 1.2)
   trustHost: true, // Railway serves via proxy; without this, auth.js throws UntrustedHostError in production
   providers: [ResendEmailProvider],
+  pages: {
+    signIn: "/auth/signin",
+    error: "/auth/error",
+  },
 });
