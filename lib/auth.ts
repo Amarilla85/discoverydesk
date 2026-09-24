@@ -57,5 +57,6 @@ const ResendEmailProvider: EmailConfig = {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET,
+  trustHost: true, // Railway serves via proxy; without this, auth.js throws UntrustedHostError in production
   providers: [ResendEmailProvider],
 });
