@@ -17,11 +17,13 @@ export function EditableDiscoveryName({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   // Reset the draft when the name prop changes — adjusted during render
-  // (React's documented alternative to a setState-in-effect sync).
+  // (React's documented alternative to a setState-in-effect sync). Skipped
+  // while editing so an upstream rename (e.g. via Story 2.4 polling) never
+  // clobbers in-progress typing.
   const [prevName, setPrevName] = useState(name);
   if (prevName !== name) {
     setPrevName(name);
-    setDraft(name);
+    if (!editing) setDraft(name);
   }
   const inputRef = useRef<HTMLInputElement>(null);
 
