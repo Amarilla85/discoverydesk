@@ -10,8 +10,8 @@ export function DiscoveryListSkeleton() {
           key={index}
           className="rounded-lg border border-outline-variant bg-surface p-6"
         >
-          <div className="h-[18px] w-1/3 animate-pulse rounded-sm bg-outline-variant" />
-          <div className="mt-3 h-3 w-1/2 animate-pulse rounded-sm bg-outline-variant" />
+          <div className="h-7 w-1/3 animate-pulse rounded-sm bg-outline-variant" />
+          <div className="mt-2 h-4 w-1/2 animate-pulse rounded-sm bg-outline-variant" />
         </li>
       ))}
     </ul>

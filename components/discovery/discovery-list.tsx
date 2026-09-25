@@ -113,8 +113,12 @@ export function DiscoveryList({
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-h1 text-on-surface">{discovery.name}</h2>
+                  <div className="min-w-0">
+                    {/* break-words: the schema allows 100-char names, and a
+                        whitespace-free name has no wrap opportunity on its own. */}
+                    <h2 className="text-h1 text-on-surface [overflow-wrap:anywhere]">
+                      {discovery.name}
+                    </h2>
                     <p className="text-caption tabular-nums text-on-surface-variant">
                       Created {discovery.createdAtLabel} · Modified{" "}
                       {discovery.updatedAtLabel}
