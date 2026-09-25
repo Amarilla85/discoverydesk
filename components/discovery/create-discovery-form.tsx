@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import {
   createDiscovery,
   type CreateDiscoveryState,
@@ -64,13 +65,25 @@ export function CreateDiscoveryForm() {
         className="h-10 rounded-sm border border-outline bg-surface px-3 text-body text-on-surface placeholder:text-on-surface-disabled"
       />
       {error ? (
-        <p
-          id="discovery-name-error"
-          role="alert"
-          className="text-body-sm text-destructive"
-        >
-          {error.message}
-        </p>
+        <>
+          <p
+            id="discovery-name-error"
+            role="alert"
+            className="text-body-sm text-destructive"
+          >
+            {error.message}
+          </p>
+          {/* Review finding (1.4): a mid-form session expiry must leave a
+              way forward — this error code means only the session is gone. */}
+          {error.code === "auth_required" ? (
+            <Link
+              href="/auth/signin"
+              className="text-body-sm text-primary underline underline-offset-2"
+            >
+              Go to sign in
+            </Link>
+          ) : null}
+        </>
       ) : null}
       <div>
         <Button type="submit" disabled={pending}>

@@ -77,7 +77,11 @@ export async function createDiscovery(
     revalidatePath("/");
 
     return { ok: true, discovery };
-  } catch {
+  } catch (error) {
+    // Review finding (1.4): the envelope above is all the client may see —
+    // the real cause goes to the server logs, or production failures are
+    // undiagnosable.
+    console.error("createDiscovery failed:", error);
     return {
       ok: false,
       error: {
