@@ -4,56 +4,111 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    /*
+     * Design token system (UX-DR1). DESIGN.md is authoritative — do not
+     * invent or round values.
+     *
+     * Values are raw colors (hex/rgba). Tailwind wraps them with var(),
+     * NOT hsl(var(--x)) — the rgba overlay tokens are not representable
+     * as HSL triplets.
+     */
+
+    /* shadcn semantic variables — remapped to DiscoveryDesk values so
+       components/ui/* work unchanged. */
+    --background: #ffffff; /* surface */
+    --foreground: #1a1d21; /* on-surface */
+    --card: #ffffff;
+    --card-foreground: #1a1d21;
+    --popover: #ffffff;
+    --popover-foreground: #1a1d21;
+    --primary: #2346ff;
+    --primary-foreground: #ffffff;
+    --secondary: #f4f5f7; /* surface-variant */
+    --secondary-foreground: #1a1d21;
+    --muted: #fafbfc; /* surface-container */
+    --muted-foreground: #5f6368; /* on-surface-variant */
+    --accent: #f4f5f7; /* shadcn hover background — NOT the DD cyan accent */
+    --accent-foreground: #1a1d21;
+    --destructive: #d32f2c;
+    --destructive-foreground: #ffffff;
+    --border: #e8eaed; /* outline-variant (global default border) */
+    --input: #dadce0; /* outline */
+    --ring: rgba(35, 70, 255, 0.35); /* focus-ring */
     --radius: 0.5rem;
+
+    /* DiscoveryDesk-native tokens */
+    --surface: #ffffff;
+    --surface-variant: #f4f5f7;
+    --surface-container: #fafbfc;
+    --on-surface: #1a1d21;
+    --on-surface-variant: #5f6368;
+    --on-surface-disabled: #a8aeb3;
+    --outline: #dadce0;
+    --outline-variant: #e8eaed;
+    --primary-container: #e8ecff;
+    --on-primary-container: #1a30d8;
+    --success: #00a34d;
+    --on-success: #ffffff;
+    --success-container: #e6f9ee;
+    --on-success-container: #007a3a;
+    --warning: #e5b800;
+    --on-warning: #1a1d21;
+    --warning-container: #fff8e0;
+    --on-warning-container: #7a6500;
+    --destructive-container: #ffebeb;
+    --on-destructive-container: #a82522;
+    /* Cyan accent is decorative highlight only — never a functional state (DESIGN.md). */
+    --accent-cyan: #14e1dc;
+    --on-accent-cyan: #1a1d21;
+    --hover-overlay: rgba(35, 70, 255, 0.04);
+    --active-overlay: rgba(35, 70, 255, 0.08);
+    --focus-ring: rgba(35, 70, 255, 0.35);
+    --disabled-surface: #f4f5f7;
+    --disabled-on-surface: #a8aeb3;
+    --disabled-border: #e8eaed;
+    --badge-draft: #f4f5f7;
+    --badge-draft-text: #5f6368;
+    --badge-in-review: #fff8e0;
+    --badge-in-review-text: #7a6500;
+    --badge-approved: #e6f9ee;
+    --badge-approved-text: #007a3a;
+    --badge-error: #ffebeb;
+    --badge-error-text: #a82522;
+    --modal-overlay: rgba(0, 0, 0, 0.4);
   }
 
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-  }
-}
+  /*
+   * Spacing (UX-DR / DESIGN.md spacing.1–20): Tailwind's default spacing
+   * scale already matches the 4px-based scale exactly (p-1=4px … p-20=80px,
+   * including 3=12, 5=20, 6=24, 8=32, 10=40, 12=48, 16=64). Do NOT add a
+   * custom spacing scale.
+   *
+   * Radius (UX-DR4): --radius: 0.5rem derives lg=8px / md=6px / sm=4px —
+   * already the DiscoveryDesk scale. Only xl (12px) is added in the config.
+   */
 
-@layer base {
   * {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-variation-settings: "opsz" 14;
+  }
+
+  /* UX-DR22 focus indicator: 2px primary outline + 3px focus-ring spread,
+     always visible on every focusable element. */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+}
+
+@layer utilities {
+  /* Opt-in focus indicator for components that need to apply it explicitly. */
+  .focus-ring {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 }
