@@ -17,16 +17,49 @@
 // Production-only: local dev keeps `npm run dev`; migrations stay a manual
 // `prisma migrate dev` locally per ARCH-7. Referenced only from
 // .railway/railway.ts's start command.
+//
+// Signal handling (added after the Story 1.6 code review): Railway sends
+// SIGTERM to PID 1 (this script) on every redeploy/scale-down. Node does not
+// forward signals to spawned children, so without a handler the Next server
+// dies mid-request and the npm child lingers as an orphan. We forward the
+// signal to the running child, give it a grace period to drain, then exit
+// with the conventional code (143 = 128+SIGTERM, 130 = 128+SIGINT).
 import { spawn } from "node:child_process";
 
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAY_MS = 10_000;
+const SHUTDOWN_GRACE_MS = 10_000;
+
+let activeChild = null;
+let receivedSignal = null;
+
+const exitCodeFor = (signalName) => (signalName === "SIGINT" ? 130 : 143);
+
+for (const signalName of ["SIGTERM", "SIGINT"]) {
+  process.on(signalName, () => {
+    if (receivedSignal) return;
+    receivedSignal = signalName;
+    console.log(`[start] ${signalName} received — shutting down`);
+    if (activeChild) {
+      activeChild.kill(signalName);
+      // Force the issue if the child ignores the signal past the grace period.
+      setTimeout(() => process.exit(exitCodeFor(signalName)), SHUTDOWN_GRACE_MS).unref();
+    } else {
+      process.exit(exitCodeFor(signalName));
+    }
+  });
+}
 
 function run(command, args) {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: "inherit" });
-    child.on("exit", (code, signal) => resolve({ code, signal }));
+    activeChild = child;
+    child.on("exit", (code, signal) => {
+      activeChild = null;
+      resolve({ code, signal });
+    });
     child.on("error", (err) => {
+      activeChild = null;
       console.error(`[start] failed to spawn ${command}: ${err.message}`);
       resolve({ code: 1, signal: null });
     });
@@ -39,6 +72,10 @@ let migrated = false;
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   console.log(`[start] prisma migrate deploy (attempt ${attempt}/${MAX_ATTEMPTS})`);
   const { code } = await run("npx", ["prisma", "migrate", "deploy"]);
+  if (receivedSignal) {
+    console.error(`[start] ${receivedSignal} during migration — not retrying`);
+    process.exit(exitCodeFor(receivedSignal));
+  }
   if (code === 0) {
     migrated = true;
     break;
@@ -60,6 +97,10 @@ if (!migrated) {
 }
 
 console.log("[start] migrations applied — starting server");
-const { code: serverCode, signal } = await run("npm", ["run", "start"]);
-if (signal) process.exit(1);
+const { code: serverCode, signal: serverSignal } = await run("npm", ["run", "start"]);
+if (receivedSignal) process.exit(exitCodeFor(receivedSignal));
+if (serverSignal) {
+  console.error(`[start] server terminated by ${serverSignal}`);
+  process.exit(1);
+}
 process.exit(serverCode ?? 0);
