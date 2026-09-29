@@ -5,6 +5,7 @@ import {
   PhaseStepper,
   type StepperPhase,
 } from "@/components/phase/phase-stepper";
+import { PhaseCard } from "@/components/phase/phase-card";
 import { auth } from "@/lib/auth";
 import {
   PHASE_DESCRIPTIONS,
@@ -84,8 +85,11 @@ export default async function PhasePage({
       {locks[phaseType] ? (
         // ARCH-9: blocked read path — no phase output is rendered; the message
         // directs the user to the current available phase (EXPERIENCE.md
-        // locked-phase microcopy, UX-DR25).
-        <div className="rounded-lg border border-outline-variant bg-surface p-6">
+        // locked-phase microcopy, UX-DR25). Story 2.2: the panel is now the
+        // Phase Card's locked variant (surface-container fill). The helper
+        // link stays interactive — it is blocked-state messaging, not phase
+        // content, so the card gets no pointer-events-none.
+        <PhaseCard state={states[phaseType]} locked>
           <p className="text-body text-on-surface">
             Complete and get sign-off for {predecessorName} before editing the
             next phase.
@@ -96,7 +100,7 @@ export default async function PhasePage({
           >
             Go to {PHASE_NAMES[availableType]}
           </Link>
-        </div>
+        </PhaseCard>
       ) : (
         <>
           <header className="flex flex-col gap-2">
@@ -108,14 +112,17 @@ export default async function PhasePage({
               {PHASE_DESCRIPTIONS[phaseType]}
             </p>
           </header>
-          {/* Story 2.1 ships the navigation and the gate, not the editors —
-              the phase forms arrive in Stories 2.5–2.10, the Phase Card in
-              2.2. This card is the slot they replace. */}
-          <div className="mt-8 rounded-lg border border-outline-variant bg-surface p-6">
+          {/* Story 2.1 shipped the navigation and the gate, not the editors —
+              the phase forms arrive in Stories 2.5–2.10. The container is now
+              Story 2.2's Phase Card (UX-DR9); the viewed phase is always the
+              "active" card, so an editable Draft shows the primary border +
+              primary-container ring. The paragraph below is the slot the
+              editors replace. */}
+          <PhaseCard state={states[phaseType]} locked={false} active className="mt-8">
             <p className="text-body text-on-surface-variant">
               The {name} editor arrives in an upcoming story.
             </p>
-          </div>
+          </PhaseCard>
         </>
       )}
     </AppShell>
