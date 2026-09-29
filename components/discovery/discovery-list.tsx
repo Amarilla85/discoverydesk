@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { LifecycleState } from "@prisma/client";
 import { DiscoveryStateBadge } from "./discovery-state-badge";
 
@@ -11,9 +12,9 @@ import { DiscoveryStateBadge } from "./discovery-state-badge";
 // API routes. Filter + search run in memory over the rows (≤100 per NFR1),
 // so updates are instantaneous and never a page reload (AC 3, 4).
 //
-// Rows stay non-interactive placeholders — the workspace route arrives with
-// Story 2.1, which also replaces the `active` searchParam mechanism with a
-// real navigation source.
+// Story 2.1: rows navigate to the Discovery workspace (EXPERIENCE.md "Click
+// opens workspace"). The `active` searchParam highlight from Story 1.5 stays
+// supported for deep links, though nothing sets it anymore.
 
 export type DiscoveryListItem = {
   id: string;
@@ -104,28 +105,30 @@ export function DiscoveryList({
             // (DESIGN.md: elevation/state never hides the active state).
             const isActive = discovery.id === activeId;
             return (
-              <li
-                key={discovery.id}
-                className={`rounded-lg border p-6 ${
-                  isActive
-                    ? "border-primary bg-primary-container"
-                    : "border-outline-variant bg-surface hover:bg-hover-overlay"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    {/* break-words: the schema allows 100-char names, and a
-                        whitespace-free name has no wrap opportunity on its own. */}
-                    <h2 className="text-h1 text-on-surface [overflow-wrap:anywhere]">
-                      {discovery.name}
-                    </h2>
-                    <p className="text-caption tabular-nums text-on-surface-variant">
-                      Created {discovery.createdAtLabel} · Modified{" "}
-                      {discovery.updatedAtLabel}
-                    </p>
+              <li key={discovery.id}>
+                <Link
+                  href={`/discoveries/${discovery.id}`}
+                  className={`block rounded-lg border p-6 ${
+                    isActive
+                      ? "border-primary bg-primary-container"
+                      : "border-outline-variant bg-surface hover:bg-hover-overlay"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      {/* break-words: the schema allows 100-char names, and a
+                          whitespace-free name has no wrap opportunity on its own. */}
+                      <h2 className="text-h1 text-on-surface [overflow-wrap:anywhere]">
+                        {discovery.name}
+                      </h2>
+                      <p className="text-caption tabular-nums text-on-surface-variant">
+                        Created {discovery.createdAtLabel} · Modified{" "}
+                        {discovery.updatedAtLabel}
+                      </p>
+                    </div>
+                    <DiscoveryStateBadge state={discovery.lifecycleState} />
                   </div>
-                  <DiscoveryStateBadge state={discovery.lifecycleState} />
-                </div>
+                </Link>
               </li>
             );
           })}

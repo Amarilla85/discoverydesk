@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { AppShell } from "@/components/layout/app-shell";
 import { CreateDiscoveryForm } from "@/components/discovery/create-discovery-form";
 import {
   DiscoveryList,
@@ -29,8 +30,9 @@ export default async function DiscoveriesPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
-  // AC 5 mechanism: /?active=<id> highlights that row. Story 2.1 replaces
-  // this with real workspace navigation; testable manually until then.
+  // AC 5 mechanism (Story 1.5): /?active=<id> highlights that row. Since
+  // Story 2.1 rows navigate to the real workspace, nothing sets this param
+  // anymore, but the highlight stays supported for deep links.
   const activeParam = params.active;
   const activeId = typeof activeParam === "string" ? activeParam : undefined;
 
@@ -38,13 +40,19 @@ export default async function DiscoveriesPage({
   const userId = session?.user?.id;
   if (!userId) redirect("/auth/signin");
 
+  // AppShell renders per-page since Story 2.1: the workspace phase page needs
+  // to pass the Discovery name into the top bar, and a layout cannot read a
+  // child route's params. The list has no Discovery name — center slot empty,
+  // as before.
   return (
-    <section className="flex flex-col gap-6">
-      <h1 className="text-display-sm text-on-surface">Discoveries</h1>
-      <Suspense fallback={<DiscoveryListSkeleton />}>
-        <DiscoveryListSection activeId={activeId} userId={userId} />
-      </Suspense>
-    </section>
+    <AppShell>
+      <section className="flex flex-col gap-6">
+        <h1 className="text-display-sm text-on-surface">Discoveries</h1>
+        <Suspense fallback={<DiscoveryListSkeleton />}>
+          <DiscoveryListSection activeId={activeId} userId={userId} />
+        </Suspense>
+      </section>
+    </AppShell>
   );
 }
 

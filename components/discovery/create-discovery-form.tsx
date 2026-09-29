@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   createDiscovery,
   type CreateDiscoveryState,
@@ -16,8 +17,8 @@ import { Button } from "@/components/ui/button";
 // there is no duplicated client-side rule and no maxLength on the input (the
 // >100-character error path must stay reachable, AC 3).
 //
-// No navigation after create — Story 2.1 wires it (see story Dev Notes). The
-// list refresh via revalidatePath is the visible confirmation.
+// Story 2.1 (Task 6.2): a successful create navigates straight into the new
+// workspace at Phase 1 (the entry route resolves the default phase).
 export function CreateDiscoveryForm() {
   const [state, action, pending] = useActionState<
     CreateDiscoveryState | null,
@@ -25,14 +26,19 @@ export function CreateDiscoveryForm() {
   >(createDiscovery, null);
   const [open, setOpen] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
+  const router = useRouter();
 
   // Render-time state adjustment (Story 1.3's draft-sync pattern — no
   // useEffect, which trips react-hooks/set-state-in-effect): collapse the
-  // form once a creation succeeds; unmounting resets the input.
+  // form once a creation succeeds and enter the workspace. The
+  // lastCreatedId guard makes both the setState and the navigation run
+  // exactly once per creation. (Phase navigation after creation is the
+  // Story 2.1 acceptance path from the epics.)
   const createdId = state?.ok ? state.discovery.id : null;
   if (createdId && createdId !== lastCreatedId) {
     setLastCreatedId(createdId);
     setOpen(false);
+    router.push(`/discoveries/${createdId}`);
   }
 
   const error = state && !state.ok ? state.error : null;

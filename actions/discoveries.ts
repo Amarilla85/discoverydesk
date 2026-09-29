@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { PhaseType } from "@prisma/client";
 import { auth } from "@/lib/auth";
+import { PHASE_ORDER } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { discoverySchema } from "@/lib/schemas/discovery";
 
@@ -15,17 +15,6 @@ import { discoverySchema } from "@/lib/schemas/discovery";
 export type CreateDiscoveryState =
   | { ok: true; discovery: { id: string; name: string } }
   | { ok: false; error: { code: string; message: string; field?: string } };
-
-// AD-5: exactly the six PhaseType values, in canonical order. Enum values are
-// referenced (not string literals) so a rename fails at compile time.
-const PHASE_TYPES: PhaseType[] = [
-  PhaseType.Persona,
-  PhaseType.PainGain,
-  PhaseType.ValueProp,
-  PhaseType.BusinessModel,
-  PhaseType.Vision,
-  PhaseType.BusinessCase,
-];
 
 // FR1: create a Discovery (owner = session user, lifecycle Draft) with all 6
 // phases initialized to Draft in one atomic write. Server Functions are
@@ -65,7 +54,7 @@ export async function createDiscovery(
           // lifecycleState and phase state default to Draft at the schema
           // level (Story 1.1); output stays null until Epic 2 writes it.
           phases: {
-            create: PHASE_TYPES.map((phaseType) => ({ phaseType })),
+            create: PHASE_ORDER.map((phaseType) => ({ phaseType })),
           },
         },
         select: { id: true, name: true },
