@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { buildStateMap, computePhaseLocks } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { personaSchema } from "@/lib/schemas/persona";
 
 // Story 2.1 — the phase-update Server Action (AD-10). Conventions mirror
 // actions/discoveries.ts (AD-12 typed envelope, snake_case codes, never a raw
@@ -28,6 +29,17 @@ export type PhaseActionState =
 // Zod schema lands with its editor (Stories 2.5–2.10) — this action validates
 // the envelope, not the output shape. The output is optional for now; the
 // auto-save integration (Story 2.3) always sends it.
+//
+// Story 2.5 (AD-11/ARCH-10 write path): phases with a landed schema validate
+// their output server-side against the SAME schema the form uses — schema
+// change is the only way to change form shape. Stories 2.6–2.10 add their
+// schemas here. validation_error is terminal in the auto-save retry ladder;
+// form-driven saves stay schema-valid by construction, so this fires only
+// for tampered/direct POSTs — that backstop is its purpose.
+const PHASE_OUTPUT_SCHEMAS: Partial<Record<PhaseType, z.ZodTypeAny>> = {
+  [PhaseType.Persona]: personaSchema,
+};
+
 const updatePhaseSchema = z.object({
   discoveryId: z.string().min(1),
   phaseType: z.nativeEnum(PhaseType),
@@ -78,6 +90,24 @@ export async function updatePhase(
           field: "output",
         },
       };
+    }
+
+    // Story 2.5: per-phase schema validation (AD-11/ARCH-10 write path).
+    const outputSchema = PHASE_OUTPUT_SCHEMAS[parsed.data.phaseType];
+    if (outputSchema) {
+      const outputCheck = outputSchema.safeParse(output);
+      if (!outputCheck.success) {
+        return {
+          ok: false,
+          error: {
+            code: "validation_error",
+            // Interpolate the phase type: this backstop is shared by the
+            // schemas landing in Stories 2.6–2.10.
+            message: `Invalid ${parsed.data.phaseType} output.`,
+            field: outputCheck.error.errors[0]?.path.join(".") || "output",
+          },
+        };
+      }
     }
   }
 

@@ -1,9 +1,10 @@
 "use client";
 
-import type { PhaseType } from "@prisma/client";
+import { PhaseType } from "@prisma/client";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PersonaForm } from "@/components/phase/persona-form";
 import { SaveIndicator } from "@/components/phase/save-indicator";
 import { Toast } from "@/components/ui/toast";
 import {
@@ -32,6 +33,9 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  * Stories 2.5–2.10 replace THIS textarea with their per-phase forms + Zod
  * schemas (AD-11); the hooks, indicator, toasts, and restore prompt persist
  * unchanged — those stories map their form state onto setOutput({ … }).
+ * Story 2.5 performed the first swap: Persona (Phase 1) renders PersonaForm
+ * (lib/schemas/persona.ts is that form's single source of truth); the other
+ * five phases keep the Notes scaffold until 2.6–2.10.
  *
  * In Review / Approved phases never render this component (the phase page
  * gates on Draft) — In Review is not editable per the EXPERIENCE.md phase
@@ -73,6 +77,11 @@ export function PhaseEditor({
     conflict: boolean;
   } | null>(null);
   const [pollToastClosed, setPollToastClosed] = useState(false);
+  // Story 2.5 (Task 5.2): bumped whenever adoptServerValue adopts a server
+  // value — PersonaForm is remounted via key={adoptVersion} so RHF re-seeds
+  // its defaultValues from the adopted output (RHF cannot re-seed from a
+  // prop change). Safe: adoption only happens when the form is NOT dirty.
+  const [adoptVersion, setAdoptVersion] = useState(0);
 
   // Runs inside the poll's async continuation (event context — the lint-safe
   // place for these state updates).
@@ -112,6 +121,14 @@ export function PhaseEditor({
       // re-applied after the refresh" (UX-DR32) is continuous: the visible
       // value never flickers, and the buffer persists until a save succeeds.
       const adopted = adoptServerValue(row.output);
+      // Story 2.5: a successful adoption re-seeds the Persona form by
+      // remounting it with the server output (state update is lint-safe here —
+      // poll continuation). A refused adoption (draft exists) remounts nothing.
+      // So does an adoption of OUR OWN write (updatedBySelf): the server value
+      // is then identical to local state (any local edit would have left a
+      // draft, making adoptServerValue refuse), so remounting would only drop
+      // keyboard focus from the field the user is on (2.5 review finding).
+      if (adopted && !row.updatedBySelf) setAdoptVersion((v) => v + 1);
       // Toast attribution rules (story 2.6): silent refresh when the writer
       // is unnamed (no record) or is this user (their other tab).
       if (!row.updatedByName || row.updatedBySelf) return;
@@ -174,23 +191,37 @@ export function PhaseEditor({
         </div>
       ) : null}
 
-      <form onSubmit={(e) => e.preventDefault()}>
-        <label htmlFor="phase-notes" className="text-label text-on-surface">
-          Notes
-        </label>
-        <textarea
-          id="phase-notes"
-          value={extractNotes(output)}
-          onChange={(e) => {
+      {phaseType === PhaseType.Persona ? (
+        // Story 2.5: the real Phase 1 form (FR-7). key={adoptVersion} re-seeds
+        // RHF when a poll adopts server values (Task 5.2); key={phaseType} on
+        // the editor mount above already isolates per-phase state.
+        <PersonaForm
+          key={adoptVersion}
+          output={output}
+          onOutputChange={(next) => {
             setHasEdited(true);
-            setOutput({ notes: e.target.value });
+            setOutput(next);
           }}
-          className="mt-2 min-h-20 w-full rounded-sm border border-outline bg-surface px-3 py-2 text-body text-on-surface placeholder:text-on-surface-disabled"
         />
-        <p className="mt-2 text-body-sm text-on-surface-variant">
-          Draft notes for this phase. Saved automatically.
-        </p>
-      </form>
+      ) : (
+        <form onSubmit={(e) => e.preventDefault()}>
+          <label htmlFor="phase-notes" className="text-label text-on-surface">
+            Notes
+          </label>
+          <textarea
+            id="phase-notes"
+            value={extractNotes(output)}
+            onChange={(e) => {
+              setHasEdited(true);
+              setOutput({ notes: e.target.value });
+            }}
+            className="mt-2 min-h-20 w-full rounded-sm border border-outline bg-surface px-3 py-2 text-body text-on-surface placeholder:text-on-surface-disabled"
+          />
+          <p className="mt-2 text-body-sm text-on-surface-variant">
+            Draft notes for this phase. Saved automatically.
+          </p>
+        </form>
+      )}
 
       {status.kind === "terminal" ? (
         <p role="alert" className="mt-3 text-body-sm text-destructive">
