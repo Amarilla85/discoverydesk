@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { buildStateMap, computePhaseLocks } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { painGainSchema } from "@/lib/schemas/pain-gain";
 import { personaSchema } from "@/lib/schemas/persona";
 
 // Story 2.1 — the phase-update Server Action (AD-10). Conventions mirror
@@ -32,12 +33,13 @@ export type PhaseActionState =
 //
 // Story 2.5 (AD-11/ARCH-10 write path): phases with a landed schema validate
 // their output server-side against the SAME schema the form uses — schema
-// change is the only way to change form shape. Stories 2.6–2.10 add their
+// change is the only way to change form shape. Stories 2.7–2.10 add their
 // schemas here. validation_error is terminal in the auto-save retry ladder;
 // form-driven saves stay schema-valid by construction, so this fires only
 // for tampered/direct POSTs — that backstop is its purpose.
 const PHASE_OUTPUT_SCHEMAS: Partial<Record<PhaseType, z.ZodTypeAny>> = {
   [PhaseType.Persona]: personaSchema,
+  [PhaseType.PainGain]: painGainSchema,
 };
 
 const updatePhaseSchema = z.object({

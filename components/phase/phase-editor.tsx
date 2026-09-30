@@ -4,6 +4,7 @@ import { PhaseType } from "@prisma/client";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PainGainForm } from "@/components/phase/pain-gain-form";
 import { PersonaForm } from "@/components/phase/persona-form";
 import { SaveIndicator } from "@/components/phase/save-indicator";
 import { Toast } from "@/components/ui/toast";
@@ -34,8 +35,9 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  * schemas (AD-11); the hooks, indicator, toasts, and restore prompt persist
  * unchanged — those stories map their form state onto setOutput({ … }).
  * Story 2.5 performed the first swap: Persona (Phase 1) renders PersonaForm
- * (lib/schemas/persona.ts is that form's single source of truth); the other
- * five phases keep the Notes scaffold until 2.6–2.10.
+ * (lib/schemas/persona.ts is that form's single source of truth). Story 2.6
+ * swapped PainGain (Phase 2) to PainGainForm (lib/schemas/pain-gain.ts); the
+ * remaining four phases keep the Notes scaffold until 2.7–2.10.
  *
  * In Review / Approved phases never render this component (the phase page
  * gates on Draft) — In Review is not editable per the EXPERIENCE.md phase
@@ -196,6 +198,18 @@ export function PhaseEditor({
         // RHF when a poll adopts server values (Task 5.2); key={phaseType} on
         // the editor mount above already isolates per-phase state.
         <PersonaForm
+          key={adoptVersion}
+          output={output}
+          onOutputChange={(next) => {
+            setHasEdited(true);
+            setOutput(next);
+          }}
+        />
+      ) : phaseType === PhaseType.PainGain ? (
+        // Story 2.6: the real Phase 2 form (FR-8). Same contract as
+        // PersonaForm — keyed remount on adoption, setOutput funnels into the
+        // 2.3 auto-save engine unchanged.
+        <PainGainForm
           key={adoptVersion}
           output={output}
           onOutputChange={(next) => {
