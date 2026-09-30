@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { PhaseState } from "@prisma/client";
 import { AppShell } from "@/components/layout/app-shell";
 import {
   PhaseStepper,
   type StepperPhase,
 } from "@/components/phase/phase-stepper";
 import { PhaseCard } from "@/components/phase/phase-card";
+import { PhaseEditor } from "@/components/phase/phase-editor";
 import { auth } from "@/lib/auth";
 import {
   PHASE_DESCRIPTIONS,
@@ -49,7 +51,9 @@ export default async function PhasePage({
     },
     select: {
       name: true,
-      phases: { select: { phaseType: true, state: true } },
+      // Story 2.3: the viewed phase's output seeds the auto-saving editor;
+      // other phases only need type + state for the stepper/gate.
+      phases: { select: { phaseType: true, state: true, output: true } },
     },
   });
   if (!discovery) notFound();
@@ -58,6 +62,9 @@ export default async function PhasePage({
   const locks = computePhaseLocks(states);
   const number = phaseNumber(phaseType);
   const name = PHASE_NAMES[phaseType];
+  // Story 2.3: the viewed phase's persisted output (null on a fresh phase).
+  const currentOutput =
+    discovery.phases.find((p) => p.phaseType === phaseType)?.output ?? null;
   const availableNumber = defaultPhaseNumber(states);
   const availableType = PHASE_ORDER[availableNumber - 1];
   // The blocking phase for a locked phase N is its predecessor (N-1); phase 1
@@ -112,16 +119,30 @@ export default async function PhasePage({
               {PHASE_DESCRIPTIONS[phaseType]}
             </p>
           </header>
-          {/* Story 2.1 shipped the navigation and the gate, not the editors —
-              the phase forms arrive in Stories 2.5–2.10. The container is now
-              Story 2.2's Phase Card (UX-DR9); the viewed phase is always the
-              "active" card, so an editable Draft shows the primary border +
-              primary-container ring. The paragraph below is the slot the
-              editors replace. */}
+          {/* Story 2.1 shipped the navigation and the gate; Story 2.2 the card
+              (UX-DR9) — the viewed phase is always the "active" card. Story 2.3
+              puts the auto-saving editor inside it for Draft phases (FR6,
+              NFR2): the scaffolding Notes editor persists to Phase.output and
+              the per-phase forms of Stories 2.5–2.10 will replace its surface.
+              In Review / Approved phases stay read-only (EXPERIENCE.md phase
+              state machine — In Review is not editable), so they keep the
+              placeholder paragraph until their read-only views arrive. */}
           <PhaseCard state={states[phaseType]} locked={false} active className="mt-8">
-            <p className="text-body text-on-surface-variant">
-              The {name} editor arrives in an upcoming story.
-            </p>
+            {states[phaseType] === PhaseState.Draft ? (
+              // key: layouts preserve client state across navigation — without
+              // this, one phase's editor state could survive into another
+              // phase's editor (2.4 review finding).
+              <PhaseEditor
+                key={phaseType}
+                discoveryId={id}
+                phaseType={phaseType}
+                initialOutput={currentOutput}
+              />
+            ) : (
+              <p className="text-body text-on-surface-variant">
+                The {name} editor arrives in an upcoming story.
+              </p>
+            )}
           </PhaseCard>
         </>
       )}
