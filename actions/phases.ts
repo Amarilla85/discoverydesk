@@ -136,7 +136,10 @@ export async function updatePhase(
             phaseType: parsed.data.phaseType,
           },
         },
-        data: { output },
+        // Story 2.4: the output-write records its writer — the attribution
+        // source for the "Updated by {name}." polling toast (UX-DR27). The
+        // gate-probe path above intentionally stays writer-less.
+        data: { output, updatedById: userId },
         select: { id: true, phaseType: true },
       });
       return { ok: true as const, phase };

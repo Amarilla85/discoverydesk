@@ -93,3 +93,9 @@ export function defaultPhaseNumber(states: PhaseStatesByType): number {
   );
   return index === -1 ? 1 : index + 1;
 }
+
+// Story 2.4 (NFR3, AD-3): collaboration visibility polls every 10 seconds.
+// Lives here per the architecture seed ("Phase enum, state machine rules,
+// polling interval") — client-importable, so never move it into a "use server"
+// module. WebSocket post-MVP replaces the hook, not this value.
+export const POLL_INTERVAL_MS = 10_000;
