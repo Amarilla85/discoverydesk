@@ -4,6 +4,7 @@ import { PhaseType } from "@prisma/client";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { BusinessModelForm } from "@/components/phase/business-model-form";
 import { PainGainForm } from "@/components/phase/pain-gain-form";
 import { PersonaForm } from "@/components/phase/persona-form";
 import { ValuePropForm } from "@/components/phase/value-prop-form";
@@ -40,8 +41,9 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  * swapped PainGain (Phase 2) to PainGainForm (lib/schemas/pain-gain.ts).
  * Story 2.7 swapped ValueProp (Phase 3) to ValuePropForm
  * (lib/schemas/value-prop.ts — its pre-population seed composes at the phase
- * page level); the remaining three phases keep the Notes scaffold until
- * 2.8–2.10.
+ * page level). Story 2.8 swapped BusinessModel (Phase 4) to BusinessModelForm
+ * (lib/schemas/business-model.ts); the remaining two phases keep the Notes
+ * scaffold until 2.9–2.10.
  *
  * In Review / Approved phases never render this component (the phase page
  * gates on Draft) — In Review is not editable per the EXPERIENCE.md phase
@@ -229,6 +231,20 @@ export function PhaseEditor({
         // server-side in the phase page and arrives inside `output` — the
         // form is unaware of it.
         <ValuePropForm
+          key={adoptVersion}
+          output={output}
+          onOutputChange={(next) => {
+            setHasEdited(true);
+            setOutput(next);
+          }}
+        />
+      ) : phaseType === PhaseType.BusinessModel ? (
+        // Story 2.8: the real Phase 4 form (FR-10). Same contract as the
+        // Persona/PainGain/ValueProp forms — keyed remount on adoption,
+        // setOutput funnels into the 2.3 auto-save engine unchanged. No
+        // seed: FR-10 defines no pre-population, so `output` is the raw
+        // persisted value exactly as in 2.5/2.6.
+        <BusinessModelForm
           key={adoptVersion}
           output={output}
           onOutputChange={(next) => {

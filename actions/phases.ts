@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { painGainSchema } from "@/lib/schemas/pain-gain";
 import { personaSchema } from "@/lib/schemas/persona";
 import { valuePropSchema } from "@/lib/schemas/value-prop";
+import { businessModelSchema } from "@/lib/schemas/business-model";
 
 // Story 2.1 — the phase-update Server Action (AD-10). Conventions mirror
 // actions/discoveries.ts (AD-12 typed envelope, snake_case codes, never a raw
@@ -42,6 +43,7 @@ const PHASE_OUTPUT_SCHEMAS: Partial<Record<PhaseType, z.ZodTypeAny>> = {
   [PhaseType.Persona]: personaSchema,
   [PhaseType.PainGain]: painGainSchema,
   [PhaseType.ValueProp]: valuePropSchema,
+  [PhaseType.BusinessModel]: businessModelSchema,
 };
 
 const updatePhaseSchema = z.object({
