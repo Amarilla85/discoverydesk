@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { PhaseState } from "@prisma/client";
+import { PhaseState, PhaseType } from "@prisma/client";
 import { AppShell } from "@/components/layout/app-shell";
 import {
   PhaseStepper,
@@ -20,6 +20,11 @@ import {
   phaseNumber,
 } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import {
+  isEmptyValueProp,
+  normalizeValuePropOutput,
+  seedValuePropFromPrior,
+} from "@/lib/schemas/value-prop";
 
 // Story 2.1: the workspace phase view — stepper (FR4, UX-DR8) above a phase
 // content area, with the AD-6 phase gate enforced here on the READ path
@@ -65,6 +70,28 @@ export default async function PhasePage({
   // Story 2.3: the viewed phase's persisted output (null on a fresh phase).
   const currentOutput =
     discovery.phases.find((p) => p.phaseType === phaseType)?.output ?? null;
+  // Story 2.7 (FR-9 pre-population): while the persisted Phase 3 output is
+  // still empty — a fresh phase, or a legacy `{ notes }` scaffold that
+  // normalizes to empty — the editor seeds from the completed Persona (jobs)
+  // and Pain/Gain (gains, pains) outputs. The seed is a MOUNT-TIME seed, not
+  // a write: it arrives as the ordinary initialOutput, so nothing persists
+  // until the BA's first edit (auto-save only fires on change), and once
+  // Phase 3 holds ANY item the persisted output wins entirely (never
+  // re-seeds). Composition happens here at the server level — PhaseEditor
+  // and useAutoSave are untouched.
+  let editorOutput: unknown = currentOutput;
+  if (phaseType === PhaseType.ValueProp) {
+    const normalizedCurrent = normalizeValuePropOutput(currentOutput);
+    if (isEmptyValueProp(normalizedCurrent)) {
+      const personaOutput =
+        discovery.phases.find((p) => p.phaseType === PhaseType.Persona)
+          ?.output ?? null;
+      const painGainOutput =
+        discovery.phases.find((p) => p.phaseType === PhaseType.PainGain)
+          ?.output ?? null;
+      editorOutput = seedValuePropFromPrior(personaOutput, painGainOutput);
+    }
+  }
   const availableNumber = defaultPhaseNumber(states);
   const availableType = PHASE_ORDER[availableNumber - 1];
   // The blocking phase for a locked phase N is its predecessor (N-1); phase 1
@@ -136,7 +163,7 @@ export default async function PhasePage({
                 key={phaseType}
                 discoveryId={id}
                 phaseType={phaseType}
-                initialOutput={currentOutput}
+                initialOutput={editorOutput}
               />
             ) : (
               <p className="text-body text-on-surface-variant">

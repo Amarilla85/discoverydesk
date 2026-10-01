@@ -6,6 +6,7 @@ import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PainGainForm } from "@/components/phase/pain-gain-form";
 import { PersonaForm } from "@/components/phase/persona-form";
+import { ValuePropForm } from "@/components/phase/value-prop-form";
 import { SaveIndicator } from "@/components/phase/save-indicator";
 import { Toast } from "@/components/ui/toast";
 import {
@@ -36,8 +37,11 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  * unchanged — those stories map their form state onto setOutput({ … }).
  * Story 2.5 performed the first swap: Persona (Phase 1) renders PersonaForm
  * (lib/schemas/persona.ts is that form's single source of truth). Story 2.6
- * swapped PainGain (Phase 2) to PainGainForm (lib/schemas/pain-gain.ts); the
- * remaining four phases keep the Notes scaffold until 2.7–2.10.
+ * swapped PainGain (Phase 2) to PainGainForm (lib/schemas/pain-gain.ts).
+ * Story 2.7 swapped ValueProp (Phase 3) to ValuePropForm
+ * (lib/schemas/value-prop.ts — its pre-population seed composes at the phase
+ * page level); the remaining three phases keep the Notes scaffold until
+ * 2.8–2.10.
  *
  * In Review / Approved phases never render this component (the phase page
  * gates on Draft) — In Review is not editable per the EXPERIENCE.md phase
@@ -210,6 +214,21 @@ export function PhaseEditor({
         // PersonaForm — keyed remount on adoption, setOutput funnels into the
         // 2.3 auto-save engine unchanged.
         <PainGainForm
+          key={adoptVersion}
+          output={output}
+          onOutputChange={(next) => {
+            setHasEdited(true);
+            setOutput(next);
+          }}
+        />
+      ) : phaseType === PhaseType.ValueProp ? (
+        // Story 2.7: the real Phase 3 form (FR-9). Same contract as
+        // PersonaForm/PainGainForm — keyed remount on adoption, setOutput
+        // funnels into the 2.3 auto-save engine unchanged. The FR-9
+        // pre-population seed (Persona jobs + PainGain gains/pains) composes
+        // server-side in the phase page and arrives inside `output` — the
+        // form is unaware of it.
+        <ValuePropForm
           key={adoptVersion}
           output={output}
           onOutputChange={(next) => {

@@ -8,6 +8,7 @@ import { buildStateMap, computePhaseLocks } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { painGainSchema } from "@/lib/schemas/pain-gain";
 import { personaSchema } from "@/lib/schemas/persona";
+import { valuePropSchema } from "@/lib/schemas/value-prop";
 
 // Story 2.1 — the phase-update Server Action (AD-10). Conventions mirror
 // actions/discoveries.ts (AD-12 typed envelope, snake_case codes, never a raw
@@ -40,6 +41,7 @@ export type PhaseActionState =
 const PHASE_OUTPUT_SCHEMAS: Partial<Record<PhaseType, z.ZodTypeAny>> = {
   [PhaseType.Persona]: personaSchema,
   [PhaseType.PainGain]: painGainSchema,
+  [PhaseType.ValueProp]: valuePropSchema,
 };
 
 const updatePhaseSchema = z.object({
