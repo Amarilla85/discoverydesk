@@ -25,6 +25,7 @@ import {
   normalizeValuePropOutput,
   seedValuePropFromPrior,
 } from "@/lib/schemas/value-prop";
+import { selectTopPainSuggestions } from "@/lib/schemas/vision";
 
 // Story 2.1: the workspace phase view — stepper (FR4, UX-DR8) above a phase
 // content area, with the AD-6 phase gate enforced here on the READ path
@@ -91,6 +92,18 @@ export default async function PhasePage({
           ?.output ?? null;
       editorOutput = seedValuePropFromPrior(personaOutput, painGainOutput);
     }
+  }
+  // Story 2.9 (FR-11 / UX-DR19): the Vision form's top-3 pain-point chips.
+  // Composed server-side from Phase 2's already-fetched output and passed as
+  // a PROP — ephemeral suggestions, deliberately NOT merged into
+  // editorOutput: chips are UI prompts, never persisted into Phase.output
+  // (2.7's seed trick would write them there via auto-save).
+  let suggestedPains: string[] = [];
+  if (phaseType === PhaseType.Vision) {
+    const painGainOutput =
+      discovery.phases.find((p) => p.phaseType === PhaseType.PainGain)
+        ?.output ?? null;
+    suggestedPains = selectTopPainSuggestions(painGainOutput);
   }
   const availableNumber = defaultPhaseNumber(states);
   const availableType = PHASE_ORDER[availableNumber - 1];
@@ -164,6 +177,7 @@ export default async function PhasePage({
                 discoveryId={id}
                 phaseType={phaseType}
                 initialOutput={editorOutput}
+                suggestedPains={suggestedPains}
               />
             ) : (
               <p className="text-body text-on-surface-variant">

@@ -8,6 +8,7 @@ import { BusinessModelForm } from "@/components/phase/business-model-form";
 import { PainGainForm } from "@/components/phase/pain-gain-form";
 import { PersonaForm } from "@/components/phase/persona-form";
 import { ValuePropForm } from "@/components/phase/value-prop-form";
+import { VisionForm } from "@/components/phase/vision-form";
 import { SaveIndicator } from "@/components/phase/save-indicator";
 import { Toast } from "@/components/ui/toast";
 import {
@@ -42,8 +43,10 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  * Story 2.7 swapped ValueProp (Phase 3) to ValuePropForm
  * (lib/schemas/value-prop.ts — its pre-population seed composes at the phase
  * page level). Story 2.8 swapped BusinessModel (Phase 4) to BusinessModelForm
- * (lib/schemas/business-model.ts); the remaining two phases keep the Notes
- * scaffold until 2.9–2.10.
+ * (lib/schemas/business-model.ts). Story 2.9 swapped Vision (Phase 5) to
+ * VisionForm (lib/schemas/vision.ts — its top-3 pain-point chips compose at
+ * the phase page level and arrive as the ephemeral suggestedPains prop);
+ * only BusinessCase keeps the Notes scaffold until 2.10.
  *
  * In Review / Approved phases never render this component (the phase page
  * gates on Draft) — In Review is not editable per the EXPERIENCE.md phase
@@ -53,10 +56,16 @@ export function PhaseEditor({
   discoveryId,
   phaseType,
   initialOutput,
+  suggestedPains = [],
 }: {
   discoveryId: string;
   phaseType: PhaseType;
   initialOutput: unknown;
+  // Story 2.9 (FR-11/UX-DR19): the Vision form's top-3 pain-point chips.
+  // EPHEMERAL UI suggestions, never output — hence a prop instead of 2.7's
+  // seed-into-initialOutput, which would persist them into Phase.output.
+  // Composed server-side in the phase page; empty for every other phase.
+  suggestedPains?: string[];
 }) {
   const { output, setOutput, status, restoreDraft, discardDraft, adoptServerValue } =
     useAutoSave({
@@ -247,6 +256,20 @@ export function PhaseEditor({
         <BusinessModelForm
           key={adoptVersion}
           output={output}
+          onOutputChange={(next) => {
+            setHasEdited(true);
+            setOutput(next);
+          }}
+        />
+      ) : phaseType === PhaseType.Vision ? (
+        // Story 2.9: the real Phase 5 form (FR-11). Same contract as the
+        // Persona/PainGain/ValueProp/BusinessModel forms — keyed remount on
+        // adoption, setOutput funnels into the 2.3 auto-save engine
+        // unchanged. suggestedPains is chip data only (see the prop above).
+        <VisionForm
+          key={adoptVersion}
+          output={output}
+          suggestedPains={suggestedPains}
           onOutputChange={(next) => {
             setHasEdited(true);
             setOutput(next);
