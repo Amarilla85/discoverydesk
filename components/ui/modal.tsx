@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
+
+import { FOCUSABLE_SELECTOR, useFocusTrap } from "@/hooks/use-focus-trap";
 
 /*
  * Story 2.12 — the app's first modal (UX-DR16 / DESIGN.md modal spec).
@@ -15,8 +17,10 @@ import { X } from "lucide-react";
  * closes; body scroll is locked while open (event/lifecycle-driven DOM writes,
  * not setState — the team's recurring set-state-in-effect trap does not
  * apply); focus moves to the first focusable element inside on open and
- * returns to the triggering element on close. Deliberately NOT a focus trap —
- * full modal focus management is Story 2.13's sweep (the 1-3 deferral note).
+ * returns to the triggering element on close. Story 2.13: Tab/Shift+Tab now
+ * cycle inside the panel via the shared useFocusTrap hook (the 1-3 deferral
+ * note's promised sweep), and the title is wired to the dialog via
+ * aria-labelledby (the visible h2 announces once, not twice).
  *
  * Polling pause: the CONSUMER owns it — call acquirePause("…") on open and
  * the returned release on close (hooks/use-collaboration.ts's refcounted
@@ -37,6 +41,8 @@ export function Modal({
   footer: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const titleId = useId();
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     if (!open) return;
@@ -47,9 +53,10 @@ export function Modal({
         ? document.activeElement
         : null;
     // Focus the first interactive element inside the panel (the close
-    // button, top-right). focus() is a DOM write — lint-safe in an effect.
+    // button, top-right) using the same focusable test as the Tab trap.
+    // focus() is a DOM write — lint-safe in an effect.
     const firstFocusable = panelRef.current?.querySelector<HTMLElement>(
-      "button, [href], input, select, textarea",
+      FOCUSABLE_SELECTOR,
     );
     firstFocusable?.focus();
 
@@ -73,7 +80,7 @@ export function Modal({
       className="fixed inset-0 z-modal-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={titleId}
     >
       <div className="absolute inset-0 bg-modal-overlay" onClick={onClose} />
       {/* Centered above the backdrop (the flex wrapper ignores pointer events
@@ -91,7 +98,9 @@ export function Modal({
           >
             <X className="size-4" aria-hidden="true" />
           </button>
-          <h2 className="text-h2 text-on-surface">{title}</h2>
+          <h2 id={titleId} className="text-h2 text-on-surface">
+            {title}
+          </h2>
           <div className="mt-4 text-body text-on-surface">{children}</div>
           <div className="mt-8 flex justify-end gap-3 border-t border-outline-variant pt-4">
             {footer}

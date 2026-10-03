@@ -111,4 +111,46 @@
     outline-offset: 2px;
     box-shadow: 0 0 0 3px var(--focus-ring);
   }
+
+  /* UX-DR24 skip link: the first focusable element on every page (rendered
+     in app/layout.tsx), visually hidden until focused — focus-visible only.
+     Sits above the sticky top bar (z-40); below the modal overlay (1000). */
+  .skip-link {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    height: 40px; /* UX-DR10 button height */
+    padding: 0 16px;
+    border-radius: 4px; /* rounded.sm */
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-weight: 500;
+    font-size: 14px;
+    text-decoration: none;
+    transform: translateY(calc(-100% - 16px));
+  }
+  .skip-link:focus-visible {
+    transform: none;
+  }
+}
+
+/* Story 2.13 / NFR5 — global prefers-reduced-motion fallback (the same
+   blanket override Tailwind docs recommend): users who ask the OS for
+   reduced motion get transitions and animations collapsed to effectively
+   zero duration instead of every component having to opt in. Scroll
+   anchoring stays instant (no smooth scrolling exists today — verified).
+   The skip link's transform toggle is positional (not animated), so it is
+   unaffected and remains fully usable. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

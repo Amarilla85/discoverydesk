@@ -3,7 +3,7 @@
 // failure codes per the UX microcopy binding (UX-DR25).
 export default function AuthErrorPage() {
   return (
-    <main style={{ padding: "4rem 2rem", maxWidth: "480px", margin: "0 auto" }}>
+    <main id="main-content" style={{ padding: "4rem 2rem", maxWidth: "480px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Sign-in failed</h1>
       <p style={{ marginTop: "1rem" }}>This sign-in link has expired. Request a new one.</p>
       <p>

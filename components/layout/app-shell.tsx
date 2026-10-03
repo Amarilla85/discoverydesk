@@ -26,7 +26,7 @@ export function AppShell({
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar discoveryName={discoveryName} markApproved={markApproved} />
-        <main className="mx-auto w-full max-w-[960px] flex-1 px-6 py-10">
+        <main id="main-content" className="mx-auto w-full max-w-[960px] flex-1 px-6 py-10">
           {children}
         </main>
       </div>

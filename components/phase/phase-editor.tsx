@@ -185,7 +185,13 @@ export function PhaseEditor({
   return (
     <div>
       {showBanner ? (
-        <div className="mb-4 rounded-lg border border-outline-variant bg-surface-container p-4">
+        // Story 2.13: role="status" (polite) so screen readers hear the
+        // restore prompt — it appears after a failed-save reload, when the
+        // user has no other signal that a draft exists.
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-outline-variant bg-surface-container p-4"
+        >
           <p className="text-body text-on-surface">
             You have unsaved changes. Restore them?
           </p>

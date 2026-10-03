@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import { useForm, useWatch, type Path } from "react-hook-form";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { useStableRowKeys } from "@/hooks/use-stable-row-keys";
 import {
   normalizePainGainOutput,
   painCombinedScore,
@@ -173,9 +174,12 @@ function EntryControls({
 }
 
 /*
- * One labeled slider row (AC 2/3): `text-label` above the UX-DR23 slider
- * (integer snap 1-5, value next to thumb, hover tooltip — all in
- * components/ui/slider.tsx, reused phase-agnostically).
+ * One labeled slider row (AC 2/3): the visible `text-label` above the
+ * UX-DR23 slider (integer snap 1-5, value next to thumb, hover tooltip — all
+ * in components/ui/slider.tsx, reused phase-agnostically). Story 2.13: the
+ * label is a real <label htmlFor> linked to the input via the Slider's id
+ * prop (the 2-6 deferred label-linkage item) — previously a <span> that
+ * screen readers did not announce as the input's label.
  */
 function ScoredSlider({
   label,
@@ -188,10 +192,14 @@ function ScoredSlider({
   onChange: (next: number) => void;
   ariaLabel: string;
 }) {
+  const id = useId();
   return (
     <div>
-      <span className="text-label text-on-surface">{label}</span>
+      <label htmlFor={id} className="block text-label text-on-surface">
+        {label}
+      </label>
       <Slider
+        id={id}
         value={value}
         onChange={onChange}
         ariaLabel={ariaLabel}
@@ -213,13 +221,20 @@ function PainsColumn({
   pains: PainEntry[];
   setPains: (next: PainEntry[]) => void;
 }) {
+  // Story 2.13: stable row keys (the 2-7/2-10 deferred index-key fix) —
+  // every mutation below pairs its list update with the matching key op,
+  // so surviving cards keep their DOM identity (focus and sliders intact).
+  const rowKeys = useStableRowKeys(pains.length);
+
   const addPain = useCallback(
-    () =>
+    () => {
+      rowKeys.add();
       setPains([
         ...pains,
         { description: "", severity: 3, frequency: 3, businessImpact: 3 },
-      ]),
-    [pains, setPains],
+      ]);
+    },
+    [pains, rowKeys, setPains],
   );
 
   // AC 5 reorder: array mutation through the funnel (the schema's ordering
@@ -243,9 +258,14 @@ function PainsColumn({
     [pains, setPains],
   );
 
+  // Story 2.13: the visible h3 labels its section programmatically (the
+  // form-structure labeling sweep).
+  const sectionId = useId();
   return (
-    <section>
-      <h3 className="text-h3 text-on-surface">Pains</h3>
+    <section aria-labelledby={sectionId}>
+      <h3 id={sectionId} className="text-h3 text-on-surface">
+        Pains
+      </h3>
       {pains.length === 0 ? (
         <div className={`${emptyStateCard} mt-3`}>
           <p className="text-display-sm text-on-surface">No entries yet</p>
@@ -260,14 +280,23 @@ function PainsColumn({
         <div className="mt-3 flex flex-col gap-3">
           {pains.map((pain, index) => (
             <PainEntryCard
-              key={index}
+              key={rowKeys.keys[index]}
               index={index}
               count={pains.length}
               pain={pain}
               onChange={(next) => updatePain(index, next)}
-              onRemove={() => setPains(pains.filter((_, i) => i !== index))}
-              onMoveUp={() => movePain(index, index - 1)}
-              onMoveDown={() => movePain(index, index + 1)}
+              onRemove={() => {
+                rowKeys.removeAt(index);
+                setPains(pains.filter((_, i) => i !== index));
+              }}
+              onMoveUp={() => {
+                rowKeys.swap(index, index - 1);
+                movePain(index, index - 1);
+              }}
+              onMoveDown={() => {
+                rowKeys.swap(index, index + 1);
+                movePain(index, index + 1);
+              }}
             />
           ))}
           <Button type="button" variant="outline" size="sm" onClick={addPain}>
@@ -359,9 +388,16 @@ function GainsColumn({
   gains: GainEntry[];
   setGains: (next: GainEntry[]) => void;
 }) {
+  // Story 2.13: stable row keys (see PainsColumn) — every mutation below
+  // pairs its list update with the matching key op.
+  const rowKeys = useStableRowKeys(gains.length);
+
   const addGain = useCallback(
-    () => setGains([...gains, { description: "", relevance: 3, currentSatisfaction: 3 }]),
-    [gains, setGains],
+    () => {
+      rowKeys.add();
+      setGains([...gains, { description: "", relevance: 3, currentSatisfaction: 3 }]);
+    },
+    [gains, rowKeys, setGains],
   );
 
   const moveGain = useCallback(
@@ -383,9 +419,13 @@ function GainsColumn({
     [gains, setGains],
   );
 
+  // Story 2.13: the visible h3 labels its section programmatically.
+  const sectionId = useId();
   return (
-    <section>
-      <h3 className="text-h3 text-on-surface">Gains</h3>
+    <section aria-labelledby={sectionId}>
+      <h3 id={sectionId} className="text-h3 text-on-surface">
+        Gains
+      </h3>
       {gains.length === 0 ? (
         <div className={`${emptyStateCard} mt-3`}>
           <p className="text-display-sm text-on-surface">No entries yet</p>
@@ -400,14 +440,23 @@ function GainsColumn({
         <div className="mt-3 flex flex-col gap-3">
           {gains.map((gain, index) => (
             <GainEntryCard
-              key={index}
+              key={rowKeys.keys[index]}
               index={index}
               count={gains.length}
               gain={gain}
               onChange={(next) => updateGain(index, next)}
-              onRemove={() => setGains(gains.filter((_, i) => i !== index))}
-              onMoveUp={() => moveGain(index, index - 1)}
-              onMoveDown={() => moveGain(index, index + 1)}
+              onRemove={() => {
+                rowKeys.removeAt(index);
+                setGains(gains.filter((_, i) => i !== index));
+              }}
+              onMoveUp={() => {
+                rowKeys.swap(index, index - 1);
+                moveGain(index, index - 1);
+              }}
+              onMoveDown={() => {
+                rowKeys.swap(index, index + 1);
+                moveGain(index, index + 1);
+              }}
             />
           ))}
           <Button type="button" variant="outline" size="sm" onClick={addGain}>
@@ -486,13 +535,18 @@ function GainEntryCard({
  * deleting an entry removes it here automatically (FR-8 consequence).
  */
 function PainRanking({ pains }: { pains: PainEntry[] }) {
+  // Story 2.13: the visible h3 labels its section programmatically.
+  // (Declared before the empty-state early return — Rules of Hooks.)
+  const sectionId = useId();
   if (pains.length === 0) return null;
   const ranked = pains
     .map((pain, index) => ({ pain, index, score: painCombinedScore(pain) }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   return (
-    <section className="rounded-lg bg-surface-container p-6">
-      <h3 className="text-h3 text-on-surface">Pain ranking</h3>
+    <section aria-labelledby={sectionId} className="rounded-lg bg-surface-container p-6">
+      <h3 id={sectionId} className="text-h3 text-on-surface">
+        Pain ranking
+      </h3>
       <div className="mt-3 flex flex-col gap-3">
         {/* key stays the ORIGINAL array index (stable identity across
             re-sorts); the fallback label uses the RANKED position — labeling

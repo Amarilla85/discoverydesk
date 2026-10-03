@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
+
+import { useStableRowKeys } from "@/hooks/use-stable-row-keys";
 import { useForm, useWatch, type Path } from "react-hook-form";
 import { X } from "lucide-react";
 
@@ -186,13 +188,23 @@ function JobSection({
   jobs: string[];
   setJobs: (next: string[]) => void;
 }) {
+  // Story 2.13: the visible h3 labels its section programmatically (the
+  // form-structure labeling sweep).
+  const sectionId = useId();
+  // Story 2.13: stable row keys (the 2-7/2-10 deferred index-key fix) —
+  // mid-list delete keeps each surviving row's DOM node, so the textarea
+  // below the deleted row never has its content swapped under the caret.
+  // Every mutation below pairs its list update with the matching key op.
+  const rowKeys = useStableRowKeys(jobs.length);
   return (
-    <section className="mt-6">
-      <h3 className="text-label text-on-surface">{label}</h3>
+    <section aria-labelledby={sectionId} className="mt-6">
+      <h3 id={sectionId} className="text-label text-on-surface">
+        {label}
+      </h3>
       <p className={`${guidanceClasses} mt-2`}>{GUIDANCE[name]}</p>
       <div className="mt-3 flex flex-col gap-2">
         {jobs.map((job, index) => (
-          <div key={index} className="flex items-start gap-2">
+          <div key={rowKeys.keys[index]} className="flex items-start gap-2">
             <textarea
               rows={1}
               aria-label={`${label} ${index + 1}`}
@@ -209,7 +221,10 @@ function JobSection({
               variant="ghost"
               size="icon"
               aria-label="Remove job"
-              onClick={() => setJobs(jobs.filter((_, i) => i !== index))}
+              onClick={() => {
+                rowKeys.removeAt(index);
+                setJobs(jobs.filter((_, i) => i !== index));
+              }}
             >
               <X aria-hidden="true" />
             </Button>
@@ -221,7 +236,10 @@ function JobSection({
         variant="outline"
         size="sm"
         className="mt-3"
-        onClick={() => setJobs([...jobs, ""])}
+        onClick={() => {
+          rowKeys.add();
+          setJobs([...jobs, ""]);
+        }}
       >
         Add job
       </Button>
@@ -242,14 +260,22 @@ function OutcomesSection({
   outcomes: PersonaOutput["outcomes"];
   setOutcomes: (next: PersonaOutput["outcomes"]) => void;
 }) {
-  const addOutcome = useCallback(
-    () => setOutcomes([...outcomes, { description: "", satisfaction: 3 }]),
-    [outcomes, setOutcomes],
-  );
+  // Story 2.13: the visible h3 labels its section programmatically.
+  const sectionId = useId();
+  // Story 2.13: stable row keys (the 2-7/2-10 deferred index-key fix) —
+  // every mutation below pairs its list update with the matching key op.
+  const rowKeys = useStableRowKeys(outcomes.length);
+
+  const addOutcome = useCallback(() => {
+    rowKeys.add();
+    setOutcomes([...outcomes, { description: "", satisfaction: 3 }]);
+  }, [outcomes, rowKeys, setOutcomes]);
 
   return (
-    <section className="mt-8">
-      <h3 className="text-label text-on-surface">Desired outcomes</h3>
+    <section aria-labelledby={sectionId} className="mt-8">
+      <h3 id={sectionId} className="text-label text-on-surface">
+        Desired outcomes
+      </h3>
       {outcomes.length === 0 ? (
         // UX-DR18 empty state, verbatim (DESIGN.md Tables spec).
         <div className="mt-3 rounded-lg border border-outline-variant p-6">
@@ -272,7 +298,7 @@ function OutcomesSection({
             </TableHeader>
             <TableBody>
               {outcomes.map((outcome, index) => (
-                <TableRow key={index}>
+                <TableRow key={rowKeys.keys[index]}>
                   <TableCell>
                     <div className="flex items-start gap-2">
                       <textarea
@@ -291,9 +317,10 @@ function OutcomesSection({
                         variant="ghost"
                         size="icon"
                         aria-label="Remove outcome"
-                        onClick={() =>
-                          setOutcomes(outcomes.filter((_, i) => i !== index))
-                        }
+                        onClick={() => {
+                          rowKeys.removeAt(index);
+                          setOutcomes(outcomes.filter((_, i) => i !== index));
+                        }}
                       >
                         <X aria-hidden="true" />
                       </Button>

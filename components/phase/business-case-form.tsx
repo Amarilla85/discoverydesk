@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useStableRowKeys } from "@/hooks/use-stable-row-keys";
 import {
   Table,
   TableBody,
@@ -204,6 +205,11 @@ export function BusinessCaseForm({
     [current, push, setValue],
   );
 
+  // Story 2.13: the two inline sections' visible h3s label their sections
+  // programmatically (MetricsSection/AssumptionsSection own their ids).
+  const investmentSectionId = useId();
+  const impactSectionId = useId();
+
   return (
     <div>
       <MetricsSection
@@ -211,8 +217,10 @@ export function BusinessCaseForm({
         setMetrics={setSuccessMetrics}
       />
 
-      <section className="mt-8">
-        <h3 className="text-label text-on-surface">Estimated investment</h3>
+      <section aria-labelledby={investmentSectionId} className="mt-8">
+        <h3 id={investmentSectionId} className="text-label text-on-surface">
+          Estimated investment
+        </h3>
         <div className="mt-3 grid grid-cols-1 gap-4">
           <div>
             <label htmlFor="investment-effort-unit" className="text-label text-on-surface">
@@ -257,8 +265,10 @@ export function BusinessCaseForm({
         </div>
       </section>
 
-      <section className="mt-8">
-        <h3 className="text-label text-on-surface">Projected impact</h3>
+      <section aria-labelledby={impactSectionId} className="mt-8">
+        <h3 id={impactSectionId} className="text-label text-on-surface">
+          Projected impact
+        </h3>
         <label htmlFor="impact-narrative" className="mt-3 block text-label text-on-surface">
           Projected impact narrative
         </label>
@@ -316,13 +326,20 @@ function MetricsSection({
   metrics: BusinessCaseOutput["successMetrics"];
   setMetrics: (next: BusinessCaseOutput["successMetrics"]) => void;
 }) {
+  // Story 2.13: stable row keys (the 2-10 deferred index-key fix) — every
+  // mutation below pairs its list update with the matching key op, so
+  // surviving table rows keep their DOM identity (focus and edits intact).
+  const rowKeys = useStableRowKeys(metrics.length);
+
   const addMetric = useCallback(
-    () =>
+    () => {
+      rowKeys.add();
       setMetrics([
         ...metrics,
         { name: "", definition: "", baseline: "", target: "" },
-      ]),
-    [metrics, setMetrics],
+      ]);
+    },
+    [metrics, rowKeys, setMetrics],
   );
 
   const updateMetric = useCallback(
@@ -334,9 +351,14 @@ function MetricsSection({
     [metrics, setMetrics],
   );
 
+  // Story 2.13: the visible h3 labels its section programmatically (the
+  // form-structure labeling sweep).
+  const sectionId = useId();
   return (
-    <section>
-      <h3 className="text-label text-on-surface">Success metrics</h3>
+    <section aria-labelledby={sectionId}>
+      <h3 id={sectionId} className="text-label text-on-surface">
+        Success metrics
+      </h3>
       {metrics.length === 0 ? (
         // UX-DR18 empty state, verbatim (DESIGN.md Tables spec).
         <div className="mt-3 rounded-lg border border-outline-variant p-6">
@@ -362,7 +384,7 @@ function MetricsSection({
             </TableHeader>
             <TableBody>
               {metrics.map((metric, index) => (
-                <TableRow key={index}>
+                <TableRow key={rowKeys.keys[index]}>
                   {METRIC_COLUMNS.map((column, columnIndex) => {
                     const fieldKey = (
                       ["name", "definition", "baseline", "target"] as const
@@ -386,9 +408,10 @@ function MetricsSection({
                               variant="ghost"
                               size="icon"
                               aria-label="Remove metric"
-                              onClick={() =>
-                                setMetrics(metrics.filter((_, i) => i !== index))
-                              }
+                              onClick={() => {
+                                rowKeys.removeAt(index);
+                                setMetrics(metrics.filter((_, i) => i !== index));
+                              }}
                             >
                               <X aria-hidden="true" />
                             </Button>
@@ -421,8 +444,8 @@ function MetricsSection({
  * empty-state card — DESIGN.md Phase 6 attaches no table spec to this
  * section). Each entry: assumption textarea + a row of three status chips
  * whose SELECTED chip carries the status color. Selected is derived, never
- * stored: assumption.status === status. Rows are index-keyed (the accepted
- * 2-7 deferred pattern — the cross-form stable-id fix lands in 2.13/polish).
+ * stored: assumption.status === status. Rows use the 2.13 stable-key hook
+ * (the 2-7 deferred index-key fix, landed cross-form in this story).
  */
 function AssumptionsSection({
   assumptions,
@@ -431,10 +454,17 @@ function AssumptionsSection({
   assumptions: BusinessCaseOutput["keyAssumptions"];
   setAssumptions: (next: BusinessCaseOutput["keyAssumptions"]) => void;
 }) {
+  // Story 2.13: stable row keys (the 2-10 deferred index-key fix) — every
+  // mutation below pairs its list update with the matching key op.
+  const rowKeys = useStableRowKeys(assumptions.length);
+
   const addAssumption = useCallback(
     // Schema default status ("Unknown") — never a hardcoded literal here.
-    () => setAssumptions([...assumptions, { text: "", status: "Unknown" }]),
-    [assumptions, setAssumptions],
+    () => {
+      rowKeys.add();
+      setAssumptions([...assumptions, { text: "", status: "Unknown" }]);
+    },
+    [assumptions, rowKeys, setAssumptions],
   );
 
   const updateText = useCallback(
@@ -455,12 +485,16 @@ function AssumptionsSection({
     [assumptions, setAssumptions],
   );
 
+  // Story 2.13: the visible h3 labels its section programmatically.
+  const sectionId = useId();
   return (
-    <section className="mt-8">
-      <h3 className="text-label text-on-surface">Key assumptions</h3>
+    <section aria-labelledby={sectionId} className="mt-8">
+      <h3 id={sectionId} className="text-label text-on-surface">
+        Key assumptions
+      </h3>
       <div className="mt-3 flex flex-col gap-4">
         {assumptions.map((assumption, index) => (
-          <div key={index} className="flex flex-col gap-2">
+          <div key={rowKeys.keys[index]} className="flex flex-col gap-2">
             <div className="flex items-start gap-2">
               <textarea
                 rows={1}
@@ -474,9 +508,10 @@ function AssumptionsSection({
                 variant="ghost"
                 size="icon"
                 aria-label="Remove assumption"
-                onClick={() =>
-                  setAssumptions(assumptions.filter((_, i) => i !== index))
-                }
+                onClick={() => {
+                  rowKeys.removeAt(index);
+                  setAssumptions(assumptions.filter((_, i) => i !== index));
+                }}
               >
                 <X aria-hidden="true" />
               </Button>

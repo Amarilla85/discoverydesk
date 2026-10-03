@@ -136,9 +136,14 @@ function StepperLine({ predecessor }: { predecessor: StepperPhase }) {
 }
 
 // Locked step: a non-navigable button. Click shows the tooltip (no navigation,
-// AC 5); it hides on mouse leave or blur. Hand-rolled (click-triggered — a
-// hover-only tooltip library does not match the AC) with the DESIGN.md tooltip
-// tokens: on-surface fill, surface text, rounded-sm, caption-sm, level-2 shadow.
+// AC 5); it hides on mouse leave, blur, or Escape (Story 2.13, UX-DR26 —
+// focus stays on the button, so keyboard users can dismiss without tabbing
+// away). Hand-rolled (click-triggered — a hover-only tooltip library does not
+// match the AC) with the DESIGN.md tooltip tokens: on-surface fill, surface
+// text, rounded-sm, caption-sm, level-2 shadow. Known MVP-baseline limit
+// (deferred with the post-MVP AA audit): the tooltip is transient and not
+// aria-describedby-associated — the button's own aria-label already carries
+// the "locked" state word for screen readers.
 function LockedPhaseItem({ number, name }: { number: number; name: string }) {
   const [showTooltip, setShowTooltip] = useState(false);
   return (
@@ -148,6 +153,9 @@ function LockedPhaseItem({ number, name }: { number: number; name: string }) {
         onClick={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onBlur={() => setShowTooltip(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setShowTooltip(false);
+        }}
         aria-disabled="true"
         aria-label={`Phase ${number}: ${name}, locked`}
         className={`flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-full text-body font-semibold ${CIRCLE_STYLES.locked}`}

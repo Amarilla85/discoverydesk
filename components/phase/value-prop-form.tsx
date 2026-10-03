@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useStableRowKeys } from "@/hooks/use-stable-row-keys";
 import {
   normalizeValuePropOutput,
   unresolvedProfileItems,
@@ -116,14 +117,22 @@ export function ValuePropForm({
     [current, push, setValue],
   );
 
+  // Story 2.13: each zone header is programmatically linked to its section
+  // (aria-labelledby) so screen readers announce the zone as a labeled
+  // region (the 2-7 deferred item).
+  const profileZoneId = useId();
+  const mapZoneId = useId();
+
   return (
     <div>
       {/* Two-zone canvas (DESIGN.md Phase 3 spec): Customer Profile left,
           Value Map right; single-column stack below lg (2-6's documented
           mobile decision carried forward). */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section>
-          <h3 className="text-h3 text-on-surface">Customer Profile</h3>
+        <section aria-labelledby={profileZoneId}>
+          <h3 id={profileZoneId} className="text-h3 text-on-surface">
+            Customer Profile
+          </h3>
           {PROFILE_SECTIONS.map((section) => (
             <ListSection
               key={section.key}
@@ -142,8 +151,10 @@ export function ValuePropForm({
           ))}
         </section>
 
-        <section>
-          <h3 className="text-h3 text-on-surface">Value Map</h3>
+        <section aria-labelledby={mapZoneId}>
+          <h3 id={mapZoneId} className="text-h3 text-on-surface">
+            Value Map
+          </h3>
           {MAP_SECTIONS.map((section) => (
             <ListSection
               key={section.key}
@@ -200,14 +211,27 @@ function ListSection({
   setItems: (next: string[]) => void;
   unresolvedFlags?: boolean[];
 }) {
+  // Story 2.13: stable row keys (the 2-7 deferred index-key fix) — every
+  // mutation below pairs its list update with the matching key op, so
+  // surviving rows keep their DOM identity (the caret never jumps on delete).
+  const rowKeys = useStableRowKeys(items.length);
+
   const addItem = useCallback(
-    () => setItems([...items, ""]),
-    [items, setItems],
+    () => {
+      rowKeys.add();
+      setItems([...items, ""]);
+    },
+    [items, rowKeys, setItems],
   );
 
+  // Story 2.13: the visible h4 labels its section programmatically.
+  const sectionId = useId();
+
   return (
-    <section className="mt-6">
-      <h4 className="text-label text-on-surface">{label}</h4>
+    <section aria-labelledby={sectionId} className="mt-6">
+      <h4 id={sectionId} className="text-label text-on-surface">
+        {label}
+      </h4>
       {items.length === 0 ? (
         // UX-DR18 empty state, verbatim (DESIGN.md Tables spec — 2-5/2-6
         // precedent for reuse across phase forms).
@@ -226,7 +250,7 @@ function ListSection({
             {items.map((item, index) => {
               const flagged = unresolvedFlags?.[index] === true;
               return (
-                <div key={index} className="flex flex-col gap-1">
+                <div key={rowKeys.keys[index]} className="flex flex-col gap-1">
                   {flagged ? (
                     <div className="flex justify-end">
                       <UnresolvedBadge />
@@ -255,9 +279,10 @@ function ListSection({
                       variant="ghost"
                       size="icon"
                       aria-label={removeLabel}
-                      onClick={() =>
-                        setItems(items.filter((_, i) => i !== index))
-                      }
+                      onClick={() => {
+                        rowKeys.removeAt(index);
+                        setItems(items.filter((_, i) => i !== index));
+                      }}
                     >
                       <X aria-hidden="true" />
                     </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 import {
@@ -55,26 +55,45 @@ const textareaClasses =
  * limit. Counting is value.length (UTF-16 units) to MATCH the controls'
  * maxLength attribute, which also counts UTF-16 code units — a code-point
  * count would desync the counter from the enforced truncation. tabular-nums
- * keeps the ticking digits from shifting layout. (aria-live semantics for
- * the counter are Story 2.13's aria baseline, deliberately not added here.)
+ * keeps the ticking digits from shifting layout.
+ *
+ * Story 2.13 (a11y baseline): the visible counter is associated with its
+ * field via aria-describedby (consumer passes `id`), and threshold
+ * announcements are polite and THRESHOLD-ONLY — a persistent sr-only
+ * aria-live region whose text is empty below 90%, "Approaching the {limit}
+ * character limit." at 90%+ and "Maximum {limit} characters reached." at
+ * the limit (the 100% string is verbatim from EXPERIENCE.md's microcopy
+ * table). Never a per-keystroke announcement — that would read every digit.
  */
 function CharCounter({
+  id,
   length,
   limit,
   warningAt,
 }: {
+  id: string;
   length: number;
   limit: number;
   warningAt: number;
 }) {
   return (
-    <p
-      className={`mt-1 text-right text-caption-sm tabular-nums ${
-        length >= warningAt ? "text-destructive" : "text-on-surface-variant"
-      }`}
-    >
-      {length} / {limit} characters
-    </p>
+    <>
+      <p
+        id={id}
+        className={`mt-1 text-right text-caption-sm tabular-nums ${
+          length >= warningAt ? "text-destructive" : "text-on-surface-variant"
+        }`}
+      >
+        {length} / {limit} characters
+      </p>
+      <span aria-live="polite" className="sr-only">
+        {length >= limit
+          ? `Maximum ${limit} characters reached.`
+          : length >= warningAt
+            ? `Approaching the ${limit} character limit.`
+            : ""}
+      </span>
+    </>
   );
 }
 
@@ -97,6 +116,9 @@ export function VisionForm({
   const current = normalizeVisionOutput(watched);
 
   const lastPushedRef = useRef<string | null>(null);
+  // Story 2.13: each counter is described-by its field (aria-describedby).
+  const visionCounterId = useId();
+  const statementCounterId = useId();
   const push = useCallback(
     (next: VisionOutput) => {
       const json = JSON.stringify(next);
@@ -181,6 +203,7 @@ export function VisionForm({
                   // Composite key: duplicate descriptions must not collide.
                   key={`${index}-${pain}`}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => togglePain(pain)}
                   className={`inline-flex h-7 items-center rounded-full px-3 text-body-sm transition-colors ${
                     selected
@@ -207,9 +230,11 @@ export function VisionForm({
           maxLength={PRODUCT_VISION_LIMIT}
           value={current.productVision}
           onChange={(e) => setProductVision(e.target.value)}
+          aria-describedby={visionCounterId}
           className={`mt-1 ${textInputClasses}`}
         />
         <CharCounter
+          id={visionCounterId}
           length={current.productVision.length}
           limit={PRODUCT_VISION_LIMIT}
           warningAt={PRODUCT_VISION_WARNING_AT}
@@ -229,9 +254,11 @@ export function VisionForm({
           maxLength={PROBLEM_STATEMENT_LIMIT}
           value={current.problemStatement}
           onChange={(e) => setProblemStatement(e.target.value)}
+          aria-describedby={statementCounterId}
           className={`mt-1 ${textareaClasses}`}
         />
         <CharCounter
+          id={statementCounterId}
           length={current.problemStatement.length}
           limit={PROBLEM_STATEMENT_LIMIT}
           warningAt={PROBLEM_STATEMENT_WARNING_AT}

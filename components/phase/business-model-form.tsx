@@ -164,8 +164,17 @@ export function BusinessModelForm({
   return (
     <div>
       {/* Nine-block 3x3 canvas (DESIGN.md Phase 4 spec): single-column stack
-          below md (2-6/2-7's documented mobile decision carried forward). */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          below md (2-6/2-7's documented mobile decision carried forward).
+          Story 2.13: the grid is one labeled group (role="group" +
+          aria-label) so screen readers announce the nine blocks as a single
+          "Business Model Canvas" region instead of nine unrelated sections
+          (the 2-8 deferred item). Each block's visible h4 labels its section
+          via aria-labelledby. */}
+      <div
+        role="group"
+        aria-label="Business Model Canvas"
+        className="grid grid-cols-1 gap-4 md:grid-cols-3"
+      >
         {BLOCKS.map((block) => {
           const isNumeric = NUMERIC_BLOCK_KEYS.includes(
             block.key as NumericBlockKey,
@@ -173,12 +182,15 @@ export function BusinessModelForm({
           return (
             <section
               key={block.key}
+              aria-labelledby={`bmc-block-${block.key}`}
               className="rounded-lg border border-outline-variant p-6 hover:bg-hover-overlay"
             >
-              <h4 className="text-label text-on-surface">{block.title}</h4>
+              <h4 id={`bmc-block-${block.key}`} className="text-label text-on-surface">
+                {block.title}
+              </h4>
               <textarea
                 rows={1}
-                aria-label={block.title}
+                aria-labelledby={`bmc-block-${block.key}`}
                 value={
                   isNumeric
                     ? current[block.key as NumericBlockKey].text
@@ -203,7 +215,6 @@ export function BusinessModelForm({
                     id={`${block.key}-numeric`}
                     type="text"
                     inputMode="decimal"
-                    aria-label={NUMERIC_LABELS[block.key as NumericBlockKey]}
                     value={
                       block.key === "costStructure" ? costRaw : revenueRaw
                     }

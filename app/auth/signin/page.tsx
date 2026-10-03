@@ -21,7 +21,7 @@ export default async function SignInPage({
   const error = typeof params.error === "string" ? params.error : undefined;
 
   return (
-    <main style={{ padding: "4rem 2rem", maxWidth: "480px", margin: "0 auto" }}>
+    <main id="main-content" style={{ padding: "4rem 2rem", maxWidth: "480px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Sign in to DiscoveryDesk</h1>
       {error ? (
         // AC 3 — expired/used/invalid verification link landed back here.

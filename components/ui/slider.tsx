@@ -14,6 +14,13 @@ import { cn } from "@/lib/utils";
  * 16px thumb width) and a tooltip shows the value on hover/focus-visible
  * (UX-DR23; focus keeps the DR22 visible-ring via the focus-ring shadow on
  * the thumb). motion-reduce pins the cheap 2.13 item, same as 2.4's toast.
+ *
+ * Story 2.13 (a11y baseline): `aria-valuetext` announces the position
+ * ("3 of 5") — the visible value readouts are aria-hidden, so without it a
+ * screen reader hears nothing on change. Optional `id` lets a consumer
+ * point a visible <label htmlFor> at the input (the 2-6 deferred
+ * label-linkage item); when no visible label is passed, `ariaLabel` still
+ * names the input.
  */
 export function Slider({
   value,
@@ -21,6 +28,7 @@ export function Slider({
   min = 1,
   max = 5,
   ariaLabel,
+  id,
   className,
 }: {
   value: number;
@@ -28,6 +36,7 @@ export function Slider({
   min?: number;
   max?: number;
   ariaLabel: string;
+  id?: string;
   className?: string;
 }) {
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
@@ -43,7 +52,9 @@ export function Slider({
           max={max}
           step={1}
           value={value}
+          id={id}
           aria-label={ariaLabel}
+          aria-valuetext={`${value} of ${max}`}
           onChange={(event) => onChange(Number(event.target.value))}
           className="peer h-4 w-full cursor-pointer appearance-none bg-transparent
             [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-sm [&::-webkit-slider-runnable-track]:bg-outline-variant
