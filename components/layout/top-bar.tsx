@@ -1,5 +1,6 @@
 import { Settings, UserPlus } from "lucide-react";
 
+import { MarkApprovedButton } from "./mark-approved-button";
 import { EditableDiscoveryName } from "./editable-discovery-name";
 import { MobileNav } from "./mobile-nav";
 import { Wordmark } from "./wordmark";
@@ -10,8 +11,28 @@ import { Wordmark } from "./wordmark";
  * right. The Print View button is deferred with FR-15 (Decision 2026-09-11).
  * Invite and Settings are static icon buttons — their sheets arrive in
  * Stories 3.1 and later.
+ *
+ * Story 2.12 (FR13): "Mark Approved" is live — the click runs the
+ * approveDiscovery Server Action (lifecycle flip, approval record, toast) via
+ * the client island. The island renders whenever `markApproved` is provided
+ * (workspace pages only — omitting the prop, as the Discovery List does,
+ * renders the bar exactly as before), INCLUDING on an approved discovery:
+ * the island hides its own button when `approved` flips, but must stay
+ * mounted so its success toast survives the same-flight RSC refresh (its
+ * mount contract). The button state itself: disabled until every phase is
+ * Approved, hidden once the Discovery is Approved (terminal-locked).
  */
-export function TopBar({ discoveryName }: { discoveryName?: string }) {
+export function TopBar({
+  discoveryName,
+  markApproved,
+}: {
+  discoveryName?: string;
+  markApproved?: {
+    discoveryId: string;
+    ready: boolean;
+    approved: boolean;
+  };
+}) {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-surface px-4 shadow-sticky">
       <MobileNav />
@@ -20,6 +41,13 @@ export function TopBar({ discoveryName }: { discoveryName?: string }) {
         {discoveryName ? <EditableDiscoveryName name={discoveryName} /> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {markApproved !== undefined ? (
+          <MarkApprovedButton
+            discoveryId={markApproved.discoveryId}
+            ready={markApproved.ready}
+            approved={markApproved.approved}
+          />
+        ) : null}
         <button
           type="button"
           aria-label="Invite collaborators"

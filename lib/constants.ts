@@ -94,6 +94,17 @@ export function defaultPhaseNumber(states: PhaseStatesByType): number {
   return index === -1 ? 1 : index + 1;
 }
 
+/*
+ * Story 2.11 (FR-13, partial): the Discovery-approval gate CONDITION — every
+ * phase Approved. This is what the top bar's "Mark Approved" button unlocks
+ * (disabled until true); the approval MUTATION itself is Story 2.12.
+ */
+export function isDiscoveryApprovalReady(states: PhaseStatesByType): boolean {
+  return PHASE_ORDER.every(
+    (phaseType) => states[phaseType] === PhaseState.Approved,
+  );
+}
+
 // Story 2.4 (NFR3, AD-3): collaboration visibility polls every 10 seconds.
 // Lives here per the architecture seed ("Phase enum, state machine rules,
 // polling interval") — client-importable, so never move it into a "use server"

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BusinessModelForm } from "@/components/phase/business-model-form";
+import { BusinessCaseForm } from "@/components/phase/business-case-form";
 import { PainGainForm } from "@/components/phase/pain-gain-form";
 import { PersonaForm } from "@/components/phase/persona-form";
 import { ValuePropForm } from "@/components/phase/value-prop-form";
@@ -26,10 +27,12 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  *
  * Story 2.4 adds the collaboration layer (NFR3, UX-DR27/UX-DR32): the editor
  * mounts `useCollaboration` and reacts to foreign edits via adoptServerValue
- * + the info toast. MOUNT-SITE BOUNDARY: this is the only polling host —
- * locked and In Review / Approved phases render no editor and are therefore
- * not polled; read-only-view polling (a Stakeholder watching an In Review
- * phase) arrives with Story 2.11's sign-off controls, its first consumer.
+ * + the info toast. MOUNT-SITE BOUNDARY (updated in Story 2.11): polling
+ * hosts stay single per page. This editor owns the Draft+BA view; Story
+ * 2.11's sign-off controls (components/phase/signoff-controls.tsx) own every
+ * other LIVE view (Draft Stakeholder, In Review — any role). Locked and
+ * Approved phases poll nothing — a locked phase's content is never rendered,
+ * and Approved is terminal in Epic 2.
  *
  * SCAFFOLDING NOTE — the "Notes" textarea below is the deliberate 2.3
  * integration surface: it persists { notes: string } to Phase.output so every
@@ -45,8 +48,10 @@ import type { CollabSnapshot } from "@/lib/collab-types";
  * page level). Story 2.8 swapped BusinessModel (Phase 4) to BusinessModelForm
  * (lib/schemas/business-model.ts). Story 2.9 swapped Vision (Phase 5) to
  * VisionForm (lib/schemas/vision.ts — its top-3 pain-point chips compose at
- * the phase page level and arrive as the ephemeral suggestedPains prop);
- * only BusinessCase keeps the Notes scaffold until 2.10.
+ * the phase page level and arrive as the ephemeral suggestedPains prop).
+ * Story 2.10 swapped BusinessCase (Phase 6) to BusinessCaseForm
+ * (lib/schemas/business-case.ts); the Notes scaffold is fully retired —
+ * every phase now renders its real form.
  *
  * In Review / Approved phases never render this component (the phase page
  * gates on Draft) — In Review is not editable per the EXPERIENCE.md phase
@@ -276,23 +281,18 @@ export function PhaseEditor({
           }}
         />
       ) : (
-        <form onSubmit={(e) => e.preventDefault()}>
-          <label htmlFor="phase-notes" className="text-label text-on-surface">
-            Notes
-          </label>
-          <textarea
-            id="phase-notes"
-            value={extractNotes(output)}
-            onChange={(e) => {
-              setHasEdited(true);
-              setOutput({ notes: e.target.value });
-            }}
-            className="mt-2 min-h-20 w-full rounded-sm border border-outline bg-surface px-3 py-2 text-body text-on-surface placeholder:text-on-surface-disabled"
-          />
-          <p className="mt-2 text-body-sm text-on-surface-variant">
-            Draft notes for this phase. Saved automatically.
-          </p>
-        </form>
+        // Story 2.10: the real Phase 6 form (FR-12) — the LAST swap. The
+        // branch chain is now exhaustive over PhaseType (AD-5: exactly six
+        // values, all covered), so the 2.3 scaffolding Notes fallback is
+        // retired and the terminal case is null.
+        <BusinessCaseForm
+          key={adoptVersion}
+          output={output}
+          onOutputChange={(next) => {
+            setHasEdited(true);
+            setOutput(next);
+          }}
+        />
       )}
 
       {status.kind === "terminal" ? (
@@ -333,12 +333,4 @@ export function PhaseEditor({
       <SaveIndicator status={status} />
     </div>
   );
-}
-
-function extractNotes(output: unknown): string {
-  if (typeof output === "object" && output !== null && "notes" in output) {
-    const value = (output as { notes: unknown }).notes;
-    return typeof value === "string" ? value : "";
-  }
-  return "";
 }

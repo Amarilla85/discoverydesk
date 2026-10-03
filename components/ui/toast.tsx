@@ -13,11 +13,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * sign-off): the `info` variant ("Updated by {name}." toasts, UX-DR27) and
  * hover-pause (UX-DR17: timer pauses on hover, dismisses 1s after the pointer
  * leaves). Destructive behavior is unchanged for the existing 2.3 consumer.
- * STILL DEFERRED by design: the `success` variant (2.11's consumer), a toast
- * context/provider, and vertical stacking with a max-3 queue — this story
- * renders at most one polling toast at a time; 2.11 owns the next step.
  *
- * Auto-dismiss (UX-DR17: 4s destructive, 2s info): timers fire in callbacks —
+ * Story 2.11 adds the reserved `success` variant (the Submit-for-Review and
+ * Approve confirmations): bg-success/text-success-foreground, 2s auto-dismiss
+ * (UX-DR17), role="status" + aria-live="polite" like info. STILL DEFERRED by
+ * design: a toast context/provider and vertical stacking with a max-3 queue
+ * — 2.11 renders at most one action toast per component at a time; the known
+ * cosmetic overlap between co-hosted toasts stands.
+ *
+ * Auto-dismiss (UX-DR17: 4s destructive, 2s info/success): timers fire in callbacks —
  * no setState in the effect body. `closing` flips the exit animation on,
  * `onDismiss` unmounts 200ms later. Hover-pause cancels the pending dismiss
  * (only before closing starts — after that the exit animation must finish
@@ -32,13 +36,14 @@ export function Toast({
   onDismiss,
   children,
 }: {
-  variant?: "destructive" | "info";
+  variant?: "destructive" | "info" | "success";
   autoDismissMs?: number;
   onDismiss: () => void;
   children: React.ReactNode;
 }) {
   const [closing, setClosing] = useState(false);
-  const dismissMs = autoDismissMs ?? (variant === "info" ? 2000 : 4000);
+  const dismissMs =
+    autoDismissMs ?? (variant === "destructive" ? 4000 : 2000);
   const hideTimerRef = useRef<number | null>(null);
   const removeTimerRef = useRef<number | null>(null);
 
@@ -82,12 +87,14 @@ export function Toast({
   const variantClasses =
     variant === "info"
       ? "border border-outline bg-surface text-on-surface"
-      : "bg-destructive text-destructive-foreground";
+      : variant === "success"
+        ? "bg-success text-success-foreground"
+        : "bg-destructive text-destructive-foreground";
 
   return (
     <div
-      role={variant === "info" ? "status" : "alert"}
-      aria-live={variant === "info" ? "polite" : "assertive"}
+      role={variant === "destructive" ? "alert" : "status"}
+      aria-live={variant === "destructive" ? "assertive" : "polite"}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={`fixed bottom-12 right-6 z-toast min-w-[280px] max-w-[400px] rounded-lg px-4 py-3 text-body-sm shadow-[0_8px_32px_rgba(0,0,0,0.12)] ${variantClasses} ${

@@ -65,6 +65,7 @@ model User {
   discoveries      Discovery[]
   collaborations   Collaborator[]
   invitedCollabs   Collaborator[] @relation("InvitedBy")
+  approvals        Discovery[]    @relation("DiscoveryApprovedBy")
   comments         Comment[]
   signoffs         Signoff[]
   revisions        Revision[]
@@ -116,10 +117,19 @@ model Discovery {
   name           String
   ownerId        String
   lifecycleState LifecycleState @default(Draft)
+  // Story 2.12 (FR13): the final approval record — who clicked "Mark
+  // Approved" and when. NOT derivable from Signoff rows (the approving
+  // clicker can differ from the last phase's signer) and Phase.signoffData
+  // is per-phase, hence these columns (the one additive migration of the
+  // story: discovery_approval_fields). Name/role derive from approvedBy +
+  // Collaborator rows at render time, the 2.11 sign-off-record pattern.
+  approvedById   String?
+  approvedAt     DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
   owner         User           @relation(fields: [ownerId], references: [id])
+  approvedBy    User?          @relation("DiscoveryApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   phases        Phase[]
   collaborators Collaborator[]
 
