@@ -276,6 +276,11 @@ export default async function PhasePage({
   return (
     <AppShell
       discoveryName={discovery.name}
+      // Story 2.14 (UX-DR6): the top bar name is live for Owner and BA
+      // Collaborator (resolveCollaboratorRole maps Owner → BA); the rename
+      // action re-checks the grant server-side.
+      discoveryId={id}
+      canRename={viewerRole === "BA"}
       markApproved={{
         discoveryId: id,
         ready: markApprovedReady,

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { PHASE_ORDER } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { resolveCollaboratorRole } from "@/lib/permissions";
 import { discoverySchema } from "@/lib/schemas/discovery";
 
 // Story 1.4 — first Server Action (AD-10). Every export in a "use server"
@@ -221,6 +222,248 @@ export async function approveDiscovery(
     return result;
   } catch (error) {
     console.error("approveDiscovery failed:", error);
+    return {
+      ok: false,
+      error: {
+        code: "server_error",
+        message: "Something went wrong. Please try again.",
+      },
+    };
+  }
+}
+
+/*
+ * Story 2.14 (UX-DR6, AD-10/11/12) — inline rename from the workspace top
+ * bar. Validation is the SAME discoverySchema the create form uses (AD-11:
+ * trim, required, ≤100 chars) — the schema is untouched. Permission: Owner
+ * or BA Collaborator, resolved through resolveCollaboratorRole (the single
+ * rule in lib/permissions.ts; the Owner always resolves to BA). A member
+ * without the BA grant gets `forbidden`; a non-member gets `not_found`
+ * (same no-existence-leak rule as approveDiscovery's access filter).
+ *
+ * New envelope codes this story: `forbidden` (member without the grant) and
+ * `conflict` (the name changed under the editor — the conditional updateMany
+ * below rides the stale name in its WHERE, the 2.11/2.12 race pattern, so
+ * the loser matches 0 rows; the freshly-loaded name rides along so the
+ * client can reset its draft). `validation_error` on the name is a
+ * tampered-POST backstop — the client pre-validates empty input inline.
+ */
+export type RenameDiscoveryState =
+  | { ok: true; discovery: { id: string; name: string } }
+  | {
+      ok: false;
+      // `conflict` + `currentName` ride only the `conflict` error — the
+      // client resets its draft to the server's current name.
+      conflict?: boolean;
+      currentName?: string;
+      error: { code: string; message: string; field?: string };
+    };
+
+const renameDiscoverySchema = z.object({
+  discoveryId: z.string().min(1),
+});
+
+export async function renameDiscovery(
+  _prevState: RenameDiscoveryState | null,
+  formData: FormData,
+): Promise<RenameDiscoveryState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      ok: false,
+      error: { code: "auth_required", message: "You must be signed in." },
+    };
+  }
+
+  const parsedEnvelope = renameDiscoverySchema.safeParse({
+    discoveryId: formData.get("discoveryId") ?? "",
+  });
+  if (!parsedEnvelope.success) {
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message: "Invalid rename request.",
+        field: "name",
+      },
+    };
+  }
+
+  const parsedName = discoverySchema.safeParse(formData.get("name") ?? "");
+  if (!parsedName.success) {
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message: parsedName.error.errors[0]?.message ?? "Name is required.",
+        field: "name",
+      },
+    };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Access check (owner or collaborator) before anything else touches data.
+      const discovery = await tx.discovery.findFirst({
+        where: {
+          id: parsedEnvelope.data.discoveryId,
+          OR: [{ ownerId: userId }, { collaborators: { some: { userId } } }],
+        },
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          collaborators: { select: { userId: true, role: true } },
+        },
+      });
+      if (!discovery) {
+        return {
+          ok: false as const,
+          error: { code: "not_found", message: "Discovery not found." },
+        };
+      }
+
+      // The rename grant: Owner or BA Collaborator (AC 5 — matching the
+      // phase-editing permission model; resolveCollaboratorRole is the rule).
+      const viewerRole = resolveCollaboratorRole({
+        isOwner: discovery.ownerId === userId,
+        collaboratorRole:
+          discovery.collaborators.find((c) => c.userId === userId)?.role ??
+          null,
+      });
+      if (viewerRole !== "BA") {
+        return {
+          ok: false as const,
+          error: {
+            code: "forbidden",
+            message:
+              "Only the Owner or a BA Collaborator can rename a Discovery.",
+          },
+        };
+      }
+
+      // Conditional write: the stale name rides in the WHERE, so a rename
+      // that raced another writer matches 0 rows instead of clobbering it.
+      const updated = await tx.discovery.updateMany({
+        where: { id: discovery.id, name: discovery.name },
+        data: { name: parsedName.data },
+      });
+      if (updated.count === 0) {
+        const current = await tx.discovery.findUnique({
+          where: { id: discovery.id },
+          select: { name: true },
+        });
+        return {
+          ok: false as const,
+          conflict: true as const,
+          currentName: current?.name ?? discovery.name,
+          error: {
+            code: "conflict",
+            message: "The Discovery was renamed by someone else.",
+          },
+        };
+      }
+      return {
+        ok: true as const,
+        discovery: { id: discovery.id, name: parsedName.data },
+      };
+    });
+
+    if (!result.ok) return result;
+
+    // Refresh the workspace phase pages (the top bar name) and the list.
+    revalidatePath(`/discoveries/${parsedEnvelope.data.discoveryId}`);
+    revalidatePath("/");
+
+    return result;
+  } catch (error) {
+    console.error("renameDiscovery failed:", error);
+    return {
+      ok: false,
+      error: {
+        code: "server_error",
+        message: "Something went wrong. Please try again.",
+      },
+    };
+  }
+}
+
+/*
+ * Story 2.14 (ACs 7/8, AD-10/12) — Discovery delete, Owner-only. The write
+ * is ONE `deleteMany` (Owner rides in the WHERE — the server-side ownership
+ * check and the delete are the same statement) inside `$transaction`; the
+ * DB's ON DELETE CASCADE constraints (verified in
+ * prisma/migrations/20260924123250_init_models/migration.sql:203,206,215,
+ * 224,230 — Phase, Collaborator from Discovery; Comment, Signoff, Revision
+ * from Phase) remove every child row atomically. NOTE: the epic's AC 8 says
+ * "the schema has no cascade delete — child rows must be removed first";
+ * that premise is stale for this codebase — the single delete IS the
+ * single-transaction intent, and explicit child-then-parent choreography
+ * would be redundant (deviation documented in the story's Completion Notes).
+ *
+ * A collaborator (even a BA) gets `not_found` — AC 6 grants delete to the
+ * Owner alone, and a not-found that leaks nothing is the established
+ * access-failure shape.
+ */
+const deleteDiscoverySchema = z.object({
+  discoveryId: z.string().min(1),
+});
+
+export type DeleteDiscoveryState =
+  | { ok: true; discovery: { id: string } }
+  | { ok: false; error: { code: string; message: string; field?: string } };
+
+export async function deleteDiscovery(
+  _prevState: DeleteDiscoveryState | null,
+  formData: FormData,
+): Promise<DeleteDiscoveryState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      ok: false,
+      error: { code: "auth_required", message: "You must be signed in." },
+    };
+  }
+
+  const parsed = deleteDiscoverySchema.safeParse({
+    discoveryId: formData.get("discoveryId") ?? "",
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message: "Invalid delete request.",
+        field: "discoveryId",
+      },
+    };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const deleted = await tx.discovery.deleteMany({
+        where: { id: parsed.data.discoveryId, ownerId: userId },
+      });
+      if (deleted.count === 0) {
+        return {
+          ok: false as const,
+          error: { code: "not_found", message: "Discovery not found." },
+        };
+      }
+      return { ok: true as const, discovery: { id: parsed.data.discoveryId } };
+    });
+
+    if (!result.ok) return result;
+
+    // The list is the only surface that showed it (the workspace route now
+    // 404s through the access filter); nothing else to revalidate.
+    revalidatePath("/");
+
+    return result;
+  } catch (error) {
+    console.error("deleteDiscovery failed:", error);
     return {
       ok: false,
       error: {

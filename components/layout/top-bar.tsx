@@ -12,6 +12,11 @@ import { Wordmark } from "./wordmark";
  * Invite and Settings are static icon buttons — their sheets arrive in
  * Stories 3.1 and later.
  *
+ * Story 2.14: the center name is live — the workspace page passes
+ * discoveryId + canRename (Owner or BA Collaborator, resolved server-side)
+ * and the name saves via the renameDiscovery action inside the
+ * EditableDiscoveryName island. A name without that pair renders plain text.
+ *
  * Story 2.12 (FR13): "Mark Approved" is live — the click runs the
  * approveDiscovery Server Action (lifecycle flip, approval record, toast) via
  * the client island. The island renders whenever `markApproved` is provided
@@ -24,9 +29,16 @@ import { Wordmark } from "./wordmark";
  */
 export function TopBar({
   discoveryName,
+  discoveryId,
+  canRename,
   markApproved,
 }: {
   discoveryName?: string;
+  // Story 2.14: the rename grant rides with the name — the workspace page
+  // passes both plus the id the rename action targets. Name without the
+  // pair (nothing sets that today) degrades to plain text.
+  discoveryId?: string;
+  canRename?: boolean;
   markApproved?: {
     discoveryId: string;
     ready: boolean;
@@ -38,7 +50,19 @@ export function TopBar({
       <MobileNav />
       <Wordmark />
       <div className="flex min-w-0 flex-1 justify-center">
-        {discoveryName ? <EditableDiscoveryName name={discoveryName} /> : null}
+        {discoveryName ? (
+          discoveryId !== undefined && typeof canRename === "boolean" ? (
+            <EditableDiscoveryName
+              name={discoveryName}
+              discoveryId={discoveryId}
+              canRename={canRename}
+            />
+          ) : (
+            <p className="truncate px-2 py-1 text-h1 text-on-surface">
+              {discoveryName}
+            </p>
+          )
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {markApproved !== undefined ? (

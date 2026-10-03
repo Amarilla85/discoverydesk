@@ -76,6 +76,9 @@ async function DiscoveryListSection({
       createdAt: true,
       updatedAt: true,
       lifecycleState: true,
+      // Story 2.14: resolved to an isOwner boolean below — the raw ownerId
+      // never crosses to the client.
+      ownerId: true,
     },
   });
 
@@ -107,6 +110,10 @@ async function DiscoveryListSection({
     createdAtLabel: dateFormat.format(discovery.createdAt),
     updatedAtLabel: dateFormat.format(discovery.updatedAt),
     lifecycleState: discovery.lifecycleState,
+    // Story 2.14 (AC 6): the Delete affordance is Owner-only — the resolved
+    // boolean is all the UI needs; ownership is re-checked server-side in
+    // deleteDiscovery regardless.
+    isOwner: discovery.ownerId === userId,
   }));
 
   return (
