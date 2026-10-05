@@ -328,13 +328,16 @@ export default async function PhasePage({
   // Story 2.11 (FR-13, partial) + 2.12 (live): the top bar's "Mark Approved"
   // unlocks when every phase is Approved; the click runs approveDiscovery
   // (components/layout/mark-approved-button.tsx) and the button hides on an
-  // approved discovery. Gate equivalence: only a Stakeholder can approve a
-  // phase, so "every phase Approved" ⟺ "every phase has a Stakeholder
-  // sign-off" (the epics' sign-off wording) — one gate, never Signoff counts.
+  // approved discovery. Gate equivalence: phases are approved by a
+  // Stakeholder or the Owner (post-MVP change, Mar 2026-10-05), so "every
+  // phase Approved" ⟺ "every phase has a sign-off" — one gate, never
+  // Signoff counts.
   const markApprovedReady = isDiscoveryApprovalReady(states);
   // Story 2.11: the sign-off affordances (FR-5). Submit for Review is the
-  // BA's, and only on a Draft phase with persisted data; the sign-off buttons
-  // are the Stakeholder's, and only on an In Review phase.
+  // BA's, and only on a Draft phase with persisted data; the sign-off
+  // buttons belong to a Stakeholder — or the Owner (post-MVP change,
+  // Mar 2026-10-05: the Owner drives the full flow on an internal app) —
+  // and only on an In Review phase.
   const isDraft = states[phaseType] === PhaseState.Draft;
   const isInReview = states[phaseType] === PhaseState.InReview;
   // Read-only polling host (the 2.4 hand-off): the editor owns the Draft+BA
@@ -488,9 +491,13 @@ export default async function PhasePage({
                     "Unknown"
                   }
                   role={
-                    discovery.collaborators.find(
-                      (c) => c.userId === latestApprove.userId,
-                    )?.role ?? null
+                    // The Owner has no Collaborator row — their approval
+                    // names the role directly.
+                    latestApprove.userId === discovery.ownerId
+                      ? "Owner"
+                      : discovery.collaborators.find(
+                          (c) => c.userId === latestApprove.userId,
+                        )?.role ?? null
                   }
                   timestamp={latestApprove.timestamp}
                 />
@@ -533,7 +540,7 @@ export default async function PhasePage({
             <SignoffControls
               discoveryId={id}
               phaseType={phaseType}
-              visible={isInReview && viewerRole === "Stakeholder"}
+              visible={isInReview && (viewerRole === "Stakeholder" || isOwner)}
               poll={signoffPoll}
               approvedByName={
                 isInReview && latestApprove

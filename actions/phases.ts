@@ -82,6 +82,11 @@ type ReviewContext =
       ok: true;
       discoveryId: string;
       role: MemberRole;
+      // The Owner maps to role "BA" (lib/permissions.ts), which makes them
+      // indistinguishable from a BA Collaborator here — the sign-off grants
+      // need the raw ownership fact (post-MVP change, Mar 2026-10-05: the
+      // Owner may also approve / request changes on an internal app).
+      isOwner: boolean;
       states: PhaseStatesByType;
       state: PhaseState;
     }
@@ -120,6 +125,7 @@ async function loadReviewContext(
     ok: true,
     discoveryId: discovery.id,
     role,
+    isOwner: discovery.ownerId === userId,
     states: buildStateMap(discovery.phases),
     state:
       discovery.phases.find((p) => p.phaseType === phaseType)?.state ??
@@ -447,7 +453,11 @@ export async function submitPhaseForReview(
 // AC 3: a Stakeholder approves an InReview phase → Approved, with the
 // sign-off record (type approve) created in the SAME transaction — a torn
 // write would desync the gate, which reads Phase.state. Stakeholder-only
-// (FR-5): a BA approving their own work would defeat the review gate.
+// per FR-5 — with ONE deliberate exception (Mar, 2026-10-05, internal-app
+// call): the Discovery Owner may also approve. The Owner/BA separation
+// still holds for BA Collaborators; the Owner is the app's operator and
+// must be able to drive the full flow solo (invite emails were blocking
+// Stakeholder sign-off behind Resend's sender restrictions).
 export async function approvePhase(
   _prevState: PhaseActionState | null,
   formData: FormData,
@@ -486,12 +496,12 @@ export async function approvePhase(
       );
       if (!context.ok) return context;
 
-      if (context.role !== "Stakeholder") {
+      if (context.role !== "Stakeholder" && !context.isOwner) {
         return {
           ok: false as const,
           error: {
             code: "not_permitted",
-            message: "Only stakeholders can approve phases.",
+            message: "Only the Discovery Owner or a Stakeholder can approve phases.",
           },
         };
       }
@@ -632,12 +642,15 @@ export async function requestChanges(
       );
       if (!context.ok) return context;
 
-      if (context.role !== "Stakeholder") {
+      // Same grant as approvePhase: Stakeholder or the Owner (see the
+      // approvePhase header — the sign-off panel renders both buttons
+      // together, so the Owner gets the full review loop, not half of it).
+      if (context.role !== "Stakeholder" && !context.isOwner) {
         return {
           ok: false as const,
           error: {
             code: "not_permitted",
-            message: "Only stakeholders can request changes.",
+            message: "Only the Discovery Owner or a Stakeholder can request changes.",
           },
         };
       }

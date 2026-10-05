@@ -103,9 +103,9 @@ export async function createDiscovery(
  * comment). The gate is re-verified server-side against PHASE states: the
  * button's readiness is client-provided and untrusted. Equivalence note: the
  * epics' gate is sign-off-based ("all 6 phases have ≥1 Stakeholder sign-off"),
- * but as implemented only a Stakeholder can approve a phase
- * (approvePhase is Stakeholder-only since 2.11), so every phase Approved ⟺
- * every phase has a Stakeholder approve sign-off — keep ONE gate
+ * but as implemented phases are approved by a Stakeholder or the Owner
+ * (post-MVP change, Mar 2026-10-05 — approvePhase's grant), so every phase
+ * Approved ⟺ every phase has an approve sign-off — keep ONE gate
  * (isDiscoveryApprovalReady on states), never count Signoff rows here.
  *
  * Permission: any collaborator (owner or either role — the access filter IS
