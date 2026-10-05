@@ -1,13 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { LifecycleState, PhaseState } from "@prisma/client";
+import {
+  CollaboratorRole,
+  LifecycleState,
+  PhaseState,
+} from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { PHASE_ORDER } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { resolveCollaboratorRole } from "@/lib/permissions";
 import { discoverySchema } from "@/lib/schemas/discovery";
+import { inviteSchema } from "@/lib/schemas/invite";
 
 // Story 1.4 — first Server Action (AD-10). Every export in a "use server"
 // file must be an async function; shared types below are erased at compile.
@@ -464,6 +469,169 @@ export async function deleteDiscovery(
     return result;
   } catch (error) {
     console.error("deleteDiscovery failed:", error);
+    return {
+      ok: false,
+      error: {
+        code: "server_error",
+        message: "Something went wrong. Please try again.",
+      },
+    };
+  }
+}
+
+/*
+ * Story 3.1 (FR3, UX-DR14, AD-10/11/12) — invite a collaborator by email.
+ * The write creates (or re-uses) a PENDING Collaborator row — userId stays
+ * null until the invitee's first magic-link sign-in claims it (the claim
+ * hook lives in lib/auth.ts's events.signIn; the schema's nullable userId +
+ * @@unique([discoveryId, email]) were designed for this in Story 1.1 — no
+ * Invitation table, no token: the magic link itself proves email ownership).
+ *
+ * The invite EMAIL is deliberately NOT sent here: the sheet island triggers
+ * the standard NextAuth magic-link flow (signIn("email", { email,
+ * callbackUrl })) after this action commits — the verification URL embeds
+ * callbackUrl, so the email link lands on the invited Discovery. See the
+ * invite-sheet component comment for the full rationale (no custom email
+ * code, no duplicated token hashing).
+ *
+ * Validation is inviteSchema (AD-11): the email reuses signInSchema, whose
+ * trim().toLowerCase() also satisfies the 1-1 review defer "normalize
+ * Collaborator email to lowercase on create" — a mixed-case row would never
+ * be claimed. Role rides the Prisma enum, never a string literal.
+ *
+ * Permission: Owner or BA Collaborator (AC 5, resolveCollaboratorRole is the
+ * rule) — a member without the BA grant gets `forbidden`; a non-member gets
+ * `not_found` (no-existence-leak, same as rename/approve).
+ *
+ * `conflict` (extended this story): inviting the Discovery's own owner email
+ * — the owner has no Collaborator row by design ("ownership IS the BA
+ * grant"), so without this guard the upsert below would create a self-invite.
+ * `update: {}` in the upsert is intentional: re-inviting an existing row
+ * (claimed or pending) re-sends the email but never resurrects or changes a
+ * claimed role — role management is post-MVP.
+ */
+export type InviteCollaboratorState =
+  | { ok: true; invite: { email: string; role: CollaboratorRole } }
+  | { ok: false; error: { code: string; message: string; field?: string } };
+
+export async function inviteCollaborator(
+  _prevState: InviteCollaboratorState | null,
+  formData: FormData,
+): Promise<InviteCollaboratorState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      ok: false,
+      error: { code: "auth_required", message: "You must be signed in." },
+    };
+  }
+
+  const parsed = inviteSchema.safeParse({
+    discoveryId: formData.get("discoveryId") ?? "",
+    email: formData.get("email") ?? "",
+    role: formData.get("role") ?? "",
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message:
+          parsed.error.errors[0]?.message ??
+          "Please enter a valid email address.",
+        field: parsed.error.errors[0]?.path[0]?.toString(),
+      },
+    };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Access check (owner or collaborator) before anything else touches
+      // data; owner.email feeds the self-invite guard below.
+      const discovery = await tx.discovery.findFirst({
+        where: {
+          id: parsed.data.discoveryId,
+          OR: [{ ownerId: userId }, { collaborators: { some: { userId } } }],
+        },
+        select: {
+          id: true,
+          ownerId: true,
+          owner: { select: { email: true } },
+          collaborators: { select: { userId: true, role: true } },
+        },
+      });
+      if (!discovery) {
+        return {
+          ok: false as const,
+          error: { code: "not_found", message: "Discovery not found." },
+        };
+      }
+
+      // The invite grant: Owner or BA Collaborator (AC 5 — matching the
+      // rename and phase-editing permission model).
+      const viewerRole = resolveCollaboratorRole({
+        isOwner: discovery.ownerId === userId,
+        collaboratorRole:
+          discovery.collaborators.find((c) => c.userId === userId)?.role ??
+          null,
+      });
+      if (viewerRole !== "BA") {
+        return {
+          ok: false as const,
+          error: {
+            code: "forbidden",
+            message:
+              "Only the Owner or a BA Collaborator can invite collaborators.",
+          },
+        };
+      }
+
+      // The owner already has full access without a Collaborator row; an
+      // upsert here would create a meaningless self-invite.
+      if (parsed.data.email === discovery.owner.email?.toLowerCase()) {
+        return {
+          ok: false as const,
+          error: {
+            code: "conflict",
+            message: "This person already has access.",
+          },
+        };
+      }
+
+      // Pending row (userId null until claim) or no-op re-use of the
+      // existing row — the compound unique makes "no duplicate" structural.
+      await tx.collaborator.upsert({
+        where: {
+          discoveryId_email: {
+            discoveryId: discovery.id,
+            email: parsed.data.email,
+          },
+        },
+        create: {
+          discoveryId: discovery.id,
+          email: parsed.data.email,
+          role: parsed.data.role,
+          invitedById: userId,
+        },
+        update: {},
+      });
+
+      return {
+        ok: true as const,
+        invite: { email: parsed.data.email, role: parsed.data.role },
+      };
+    });
+
+    if (!result.ok) return result;
+
+    // Refresh the workspace phase pages — the invite sheet's server-rendered
+    // collaborator list rides the same flight as the toast.
+    revalidatePath(`/discoveries/${parsed.data.discoveryId}`);
+
+    return result;
+  } catch (error) {
+    console.error("inviteCollaborator failed:", error);
     return {
       ok: false,
       error: {

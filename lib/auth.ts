@@ -79,4 +79,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/auth/signin",
     error: "/auth/error",
   },
+  // Story 3.1 (FR3) — claim pending Collaborator invites on sign-in. A
+  // pending row (userId null, created by the inviteCollaborator action)
+  // belongs to whoever first signs in with a matching email — the magic
+  // link already proved ownership of that mailbox, so no separate invite
+  // token or promotion step exists. updateMany (not update): one sign-in
+  // claims the person's pending rows across EVERY Discovery they were
+  // invited to, and is a no-op for sign-ins with no pending invites.
+  //
+  // Both sides lowercase: Auth.js normalizes the sign-in identifier (and
+  // the adapter stores new Users from it), and the invite action stores
+  // Collaborator.email lowercased via signInSchema — a mixed-case row would
+  // never match (the 1-1 review defer, closed in 3.1).
+  //
+  // A claim failure must never block authentication: the invitee can still
+  // claim on their next sign-in, so the failure is logged, not thrown.
+  events: {
+    signIn: async ({ user }) => {
+      if (!user.email) return; // never claim against an empty-string match
+      try {
+        await prisma.collaborator.updateMany({
+          where: { email: user.email.toLowerCase(), userId: null },
+          data: { userId: user.id },
+        });
+      } catch (error) {
+        console.error("Pending collaborator claim failed:", error);
+      }
+    },
+  },
 });

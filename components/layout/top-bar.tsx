@@ -1,16 +1,24 @@
-import { Settings, UserPlus } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import { MarkApprovedButton } from "./mark-approved-button";
 import { EditableDiscoveryName } from "./editable-discovery-name";
 import { MobileNav } from "./mobile-nav";
 import { Wordmark } from "./wordmark";
+import {
+  InviteSheet,
+  type InviteSheetCollaborator,
+} from "@/components/discovery/invite-sheet";
 
 /**
  * Sticky top bar (UX-DR6): wordmark left, Discovery name center
  * (inline-editable, rendered only when a name is provided), action buttons
  * right. The Print View button is deferred with FR-15 (Decision 2026-09-11).
- * Invite and Settings are static icon buttons — their sheets arrive in
- * Stories 3.1 and later.
+ *
+ * Story 3.1 (FR3, UX-DR14): the Invite button is live — rendered by the
+ * InviteSheet island (trigger included) ONLY when `invite.canInvite`
+ * (Owner or BA Collaborator, resolved server-side; hidden, not disabled,
+ * matching the rename grant's pattern). Omitting the `invite` prop — as the
+ * Discovery List does — renders the bar without any invite control.
  *
  * Story 2.14: the center name is live — the workspace page passes
  * discoveryId + canRename (Owner or BA Collaborator, resolved server-side)
@@ -32,6 +40,7 @@ export function TopBar({
   discoveryId,
   canRename,
   markApproved,
+  invite,
 }: {
   discoveryName?: string;
   // Story 2.14: the rename grant rides with the name — the workspace page
@@ -43,6 +52,16 @@ export function TopBar({
     discoveryId: string;
     ready: boolean;
     approved: boolean;
+  };
+  // Story 3.1 (FR3): the invite sheet's data + grant. The collaborator list
+  // is server-resolved (pending rows included — visible to members via the
+  // explicit select, not the access filter).
+  invite?: {
+    discoveryId: string;
+    canInvite: boolean;
+    ownerName?: string;
+    ownerEmail?: string;
+    collaborators: InviteSheetCollaborator[];
   };
 }) {
   return (
@@ -72,13 +91,14 @@ export function TopBar({
             approved={markApproved.approved}
           />
         ) : null}
-        <button
-          type="button"
-          aria-label="Invite collaborators"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-on-surface hover:bg-hover-overlay"
-        >
-          <UserPlus className="size-4" aria-hidden="true" />
-        </button>
+        {invite?.canInvite ? (
+          <InviteSheet
+            discoveryId={invite.discoveryId}
+            ownerName={invite.ownerName}
+            ownerEmail={invite.ownerEmail}
+            collaborators={invite.collaborators}
+          />
+        ) : null}
         <button
           type="button"
           aria-label="Settings"

@@ -7,6 +7,11 @@ import {
   SignoffType,
 } from "@prisma/client";
 import { AppShell } from "@/components/layout/app-shell";
+import type { InviteSheetCollaborator } from "@/components/discovery/invite-sheet";
+import {
+  CommentThread,
+  type CommentThreadComment,
+} from "@/components/comment-thread/comment-thread";
 import {
   PhaseStepper,
   type StepperPhase,
@@ -102,6 +107,16 @@ function phaseHasData(phaseType: PhaseType, raw: unknown): boolean {
   }
 }
 
+// Story 3.2 (FR14): comment timestamps are formatted SERVER-side (the
+// signoff-record.tsx precedent) and shipped as preformatted strings in the
+// wire rows — the comment thread is a client island, and client-side
+// Intl formatting would render server-TZ HTML then hydrate with client-TZ
+// (hydration mismatch). Server and island share this one formatter.
+const COMMENT_TIME_FORMAT = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 // Story 2.1: the workspace phase view — stepper (FR4, UX-DR8) above a phase
 // content area, with the AD-6 phase gate enforced here on the READ path
 // (ARCH-9): a locked phase's content is never rendered, no matter how the
@@ -140,7 +155,22 @@ export default async function PhasePage({
       // Story 2.12 (FR13): the lifecycle drives the approved-lock UX, the
       // Reopen Phase control, and the top bar button's hidden state.
       lifecycleState: true,
-      collaborators: { select: { userId: true, role: true } },
+      // Story 3.1 (FR3): the invite sheet's collaborator list rides this
+      // query — email + claim state per row, plus the owner identity (the
+      // owner has NO Collaborator row; the sheet synthesizes their entry).
+      // Pending rows (userId null) are invisible to the page's access
+      // filter above — that filter establishes MEMBERSHIP; this explicit
+      // select is what surfaces pending invites to members.
+      owner: { select: { name: true, email: true } },
+      collaborators: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          userId: true,
+          user: { select: { name: true } },
+        },
+      },
       // Story 2.3: the viewed phase's output seeds the auto-saving editor;
       // other phases only need type + state for the stepper/gate.
       phases: {
@@ -170,6 +200,22 @@ export default async function PhasePage({
               reopenedBy: { select: { name: true, email: true } },
             },
           },
+          // Story 3.2 (FR14): the viewed phase's comment thread — flat list,
+          // oldest first (conversation order; the slide-in draws the eye to
+          // the newest at the bottom). All phases' comments ride the query
+          // like their sign-offs ("fine at this scale"); the thread rows are
+          // composed from the VIEWED phase's rows only.
+          comments: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              body: true,
+              resolved: true,
+              createdAt: true,
+              authorId: true,
+              author: { select: { name: true, email: true } },
+            },
+          },
         },
       },
     },
@@ -197,6 +243,19 @@ export default async function PhasePage({
   // Toast attribution name for the sign-off confirmations (name ?? email,
   // the 2.4 convention — the actor IS the current user).
   const viewerName = session?.user?.name ?? session?.user?.email ?? "Unknown";
+  // Story 3.1 (FR3): the invite sheet's data — the invite grant matches the
+  // rename grant (Owner or BA Collaborator, resolved server-side; the sheet
+  // renders only when granted), and the serializable collaborator rows
+  // (pending = userId null) feed the sheet's list directly. No local list
+  // state in the island — this query is the list's single source of truth.
+  const inviteCollaborators: InviteSheetCollaborator[] =
+    discovery.collaborators.map((collaborator) => ({
+      id: collaborator.id,
+      email: collaborator.email,
+      role: collaborator.role,
+      pending: collaborator.userId === null,
+      name: collaborator.user?.name ?? undefined,
+    }));
   // Latest sign-off records for the viewed phase (query orders desc).
   const currentPhaseRow = discovery.phases.find(
     (p) => p.phaseType === phaseType,
@@ -207,6 +266,23 @@ export default async function PhasePage({
   const latestChanges =
     currentPhaseRow?.signoffs.find((s) => s.type === SignoffType.requestChanges) ??
     null;
+  // Story 3.2 (FR14): the viewed phase's comment rows — plain serializable
+  // shapes the island renders directly (no local list state, the 3.1
+  // invite-collaborators pattern; the action revalidation flight delivers
+  // fresh rows). canResolve is computed SERVER-side (needs userId + ownerId);
+  // timestamps are preformatted (module formatter above).
+  const commentRows: CommentThreadComment[] = (currentPhaseRow?.comments ?? []).map(
+    (comment) => ({
+      id: comment.id,
+      authorName:
+        comment.author?.name ?? comment.author?.email ?? "Unknown",
+      createdAtLabel: COMMENT_TIME_FORMAT.format(comment.createdAt),
+      createdAtIso: comment.createdAt.toISOString(),
+      body: comment.body,
+      resolved: comment.resolved,
+      canResolve: comment.authorId === userId || isOwner,
+    }),
+  );
   // Story 2.3: the viewed phase's persisted output (null on a fresh phase).
   const currentOutput =
     discovery.phases.find((p) => p.phaseType === phaseType)?.output ?? null;
@@ -266,6 +342,17 @@ export default async function PhasePage({
   // polls here. Approved polls nothing (terminal in this story).
   const signoffPoll =
     isInReview || (isDraft && viewerRole === "Stakeholder");
+  // Story 3.2: comments are the first mutable data on an approved-phase view,
+  // so the thread becomes that view's poll host — the ONLY live view 2.11/2.12
+  // left hostless. Single-host table (the 2.11 mount-site boundary):
+  //   Draft + BA                      → PhaseEditor
+  //   Draft + Stakeholder / In Review → SignoffControlsInner
+  //   Approved phase, Discovery NOT approved → CommentThread (this prop)
+  //   Approved DISCOVERY              → nobody — the thread is frozen
+  //                                     (EXPERIENCE.md: no new comments,
+  //                                     no resolves; nothing can change).
+  const commentPoll =
+    states[phaseType] === PhaseState.Approved && !discoveryApproved;
 
   const stepperPhases: StepperPhase[] = PHASE_ORDER.map((phaseType) => ({
     phaseType,
@@ -285,6 +372,13 @@ export default async function PhasePage({
         discoveryId: id,
         ready: markApprovedReady,
         approved: discoveryApproved,
+      }}
+      invite={{
+        discoveryId: id,
+        canInvite: viewerRole === "BA",
+        ownerName: discovery.owner.name ?? undefined,
+        ownerEmail: discovery.owner.email ?? undefined,
+        collaborators: inviteCollaborators,
       }}
     >
       {/* Stepper is sticky below the top bar (h-14) with the sticky bottom-edge
@@ -457,6 +551,20 @@ export default async function PhasePage({
               discoveryId={id}
               phaseType={phaseType}
               visible={isOwner && discoveryApproved}
+            />
+            {/* Story 3.2 (FR14, AC 1): the flat comment thread — the bottom
+                slot of every UNLOCKED phase card, below all phase content
+                ("below the form", EXPERIENCE.md workspace layout). Renders
+                for every role in every state; an Approved Discovery freezes
+                it read-only (canComment false → no input, no resolve). The
+                locked branch above renders no comments — a locked phase's
+                content is never rendered, comments ride the same rule. */}
+            <CommentThread
+              discoveryId={id}
+              phaseType={phaseType}
+              canComment={!discoveryApproved}
+              poll={commentPoll}
+              comments={commentRows}
             />
           </PhaseCard>
         </>

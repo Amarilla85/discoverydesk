@@ -150,7 +150,18 @@ export function PhaseEditor({
       // is then identical to local state (any local edit would have left a
       // draft, making adoptServerValue refuse), so remounting would only drop
       // keyboard focus from the field the user is on (2.5 review finding).
-      if (adopted && !row.updatedBySelf) setAdoptVersion((v) => v + 1);
+      // Story 3.2 guardrail: comment writes touch-bump Phase.updatedAt
+      // (the polling seam), which lands here as a phaseChanged snapshot for
+      // output-unrelated changes too. Remounting on those would only drop
+      // keyboard focus from the field the user is on — remount solely when
+      // the adopted output actually differs from the local one.
+      if (
+        adopted &&
+        !row.updatedBySelf &&
+        JSON.stringify(row.output) !== JSON.stringify(output)
+      ) {
+        setAdoptVersion((v) => v + 1);
+      }
       // Toast attribution rules (story 2.6): silent refresh when the writer
       // is unnamed (no record) or is this user (their other tab).
       if (!row.updatedByName || row.updatedBySelf) return;
@@ -162,7 +173,7 @@ export function PhaseEditor({
       });
       setPollToastClosed(false); // a newly arriving toast re-arms after a prior dismiss
     },
-    [adoptServerValue, phaseType],
+    [adoptServerValue, phaseType, output],
   );
 
   useCollaboration(discoveryId, { onSnapshot: handleCollabSnapshot });

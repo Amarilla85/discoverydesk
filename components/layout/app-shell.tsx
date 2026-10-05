@@ -1,5 +1,6 @@
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
+import type { InviteSheetCollaborator } from "@/components/discovery/invite-sheet";
 
 /**
  * Two-column application layout (UX-DR6): fixed sidebar + flexible main with
@@ -12,6 +13,7 @@ export function AppShell({
   discoveryId,
   canRename,
   markApproved,
+  invite,
 }: {
   children: React.ReactNode;
   discoveryName?: string;
@@ -26,6 +28,15 @@ export function AppShell({
     ready: boolean;
     approved: boolean;
   };
+  // Story 3.1 (FR3): pass-through for the top bar's InviteSheet island —
+  // undefined (the list page) renders the bar without an invite control.
+  invite?: {
+    discoveryId: string;
+    canInvite: boolean;
+    ownerName?: string;
+    ownerEmail?: string;
+    collaborators: InviteSheetCollaborator[];
+  };
 }) {
   return (
     <div className="flex min-h-screen bg-surface">
@@ -36,6 +47,7 @@ export function AppShell({
           discoveryId={discoveryId}
           canRename={canRename}
           markApproved={markApproved}
+          invite={invite}
         />
         <main id="main-content" className="mx-auto w-full max-w-[960px] flex-1 px-6 py-10">
           {children}
