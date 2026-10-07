@@ -383,6 +383,9 @@ export default async function PhasePage({
         ownerEmail: discovery.owner.email ?? undefined,
         collaborators: inviteCollaborators,
       }}
+      // Story 3.3 (FR-16): the Executive Summary entry — visible to ALL
+      // roles (no grant).
+      summaryHref={`/discoveries/${id}/summary`}
     >
       {/* Stepper is sticky below the top bar (h-14) with the sticky bottom-edge
           shadow (DESIGN.md); -mx-6/px-6 lets its background span the main column. */}

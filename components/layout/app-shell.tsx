@@ -14,6 +14,7 @@ export function AppShell({
   canRename,
   markApproved,
   invite,
+  summaryHref,
 }: {
   children: React.ReactNode;
   discoveryName?: string;
@@ -37,6 +38,10 @@ export function AppShell({
     ownerEmail?: string;
     collaborators: InviteSheetCollaborator[];
   };
+  // Story 3.3 (FR-16): pass-through for the top bar's "Summary" link —
+  // undefined (the list page, the summary page itself) renders the bar
+  // without the link.
+  summaryHref?: string;
 }) {
   return (
     <div className="flex min-h-screen bg-surface">
@@ -48,6 +53,7 @@ export function AppShell({
           canRename={canRename}
           markApproved={markApproved}
           invite={invite}
+          summaryHref={summaryHref}
         />
         <main id="main-content" className="mx-auto w-full max-w-[960px] flex-1 px-6 py-10">
           {children}

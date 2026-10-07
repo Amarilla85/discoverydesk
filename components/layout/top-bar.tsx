@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Settings } from "lucide-react";
 
 import { MarkApprovedButton } from "./mark-approved-button";
@@ -34,6 +35,12 @@ import {
  * mounted so its success toast survives the same-flight RSC refresh (its
  * mount contract). The button state itself: disabled until every phase is
  * Approved, hidden once the Discovery is Approved (terminal-locked).
+ *
+ * Story 3.3 (FR-16): the "Summary" link — entry to the Discovery's Executive
+ * Summary view. Rendered ONLY when `summaryHref` is provided (the Discovery
+ * List omits it by contract); visible to ALL roles (FR-16: always
+ * accessible from the Discovery's top-level navigation — no grant). A labeled
+ * text-style link, not an icon button, so it reads alongside "Mark Approved".
  */
 export function TopBar({
   discoveryName,
@@ -41,6 +48,7 @@ export function TopBar({
   canRename,
   markApproved,
   invite,
+  summaryHref,
 }: {
   discoveryName?: string;
   // Story 2.14: the rename grant rides with the name — the workspace page
@@ -63,6 +71,9 @@ export function TopBar({
     ownerEmail?: string;
     collaborators: InviteSheetCollaborator[];
   };
+  // Story 3.3 (FR-16): the Executive Summary entry point — omitted (list
+  // page, the summary page itself) renders the bar without the link.
+  summaryHref?: string;
 }) {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-surface px-4 shadow-sticky">
@@ -84,6 +95,14 @@ export function TopBar({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {summaryHref !== undefined ? (
+          <Link
+            href={summaryHref}
+            className="inline-flex h-10 items-center rounded-md px-3 text-body text-on-surface hover:bg-hover-overlay"
+          >
+            Summary
+          </Link>
+        ) : null}
         {markApproved !== undefined ? (
           <MarkApprovedButton
             discoveryId={markApproved.discoveryId}
