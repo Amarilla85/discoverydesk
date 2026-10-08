@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
 /*
@@ -55,14 +55,23 @@ export async function signInAsGuest(): Promise<void> {
     console.error("signInAsGuest failed:", error);
     throw new Error("Something went wrong. Please try again.");
   }
-  // Cookie options mirror Auth.js's database-session defaults (name,
-  // httpOnly, lax, root path; secure on https).
+  // Cookie name/options mirror Auth.js's database-session defaults exactly.
+  // Auth.js prefixes the session cookie with __Secure- whenever the request
+  // is https (init.js: useSecureCookies = url.protocol === "https:") and
+  // auth() only reads the prefixed name there — the 2026-10-08 deploy wrote
+  // the bare name, so the action "worked" on prod while auth() never saw the
+  // session (click → land back on the sign-in page; read as "button dead").
+  // Match the protocol via x-forwarded-proto (https behind Railway's proxy,
+  // http for a local next start), NOT NODE_ENV — a local prod build on http
+  // must keep the bare name.
+  const proto = (await headers()).get("x-forwarded-proto") ?? "http";
+  const secure = proto === "https";
   const cookieStore = await cookies();
-  cookieStore.set("authjs.session-token", sessionToken, {
+  cookieStore.set(secure ? "__Secure-authjs.session-token" : "authjs.session-token", sessionToken, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    secure: process.env.NODE_ENV === "production",
+    secure,
     expires,
   });
 }
