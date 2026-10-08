@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { signInAsGuest } from "@/actions/guest";
+import { GuestButton } from "@/components/auth/guest-button";
 import { auth } from "@/lib/auth";
 import { SignInForm } from "./sign-in-form";
 
@@ -40,25 +40,13 @@ export default async function SignInPage({
 
       {/* Testing-phase guest pass (Mar, 2026-10-07): anyone with the link
           gets a throwaway account in one click — no email required (Resend
-          is restricted until noreply.croz.net is verified). Remove the form
-          and actions/guest.ts to end the phase; guests are Users with a
-          NULL email for easy cleanup. */}
+          is restricted until noreply.croz.net is verified). The button is a
+          client island (GuestButton) because a Server-Component form action
+          silently fails to dispatch in the production build. Remove the
+          island and actions/guest.ts to end the phase; guests are Users
+          with a NULL email for easy cleanup. */}
       <div style={{ marginTop: "2rem", borderTop: "1px solid hsl(0 0% 90%)", paddingTop: "1.5rem" }}>
-        <form action={signInAsGuest}>
-          <button
-            type="submit"
-            style={{
-              padding: "0.5rem 1.25rem",
-              background: "transparent",
-              color: "#0a0a0a",
-              border: "1px solid hsl(0 0% 45.1%)",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            Continue as guest
-          </button>
-        </form>
+        <GuestButton />
         <p style={{ color: "hsl(0 0% 45.1%)", fontSize: "0.875rem", marginTop: "0.5rem" }}>
           Testing phase: no email needed. Each guest gets their own workspace.
         </p>

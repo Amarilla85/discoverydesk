@@ -2,7 +2,6 @@
 
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
 /*
@@ -18,25 +17,46 @@ import { prisma } from "@/lib/prisma";
  * The pending-invite claim in the signIn event does NOT run here (guests
  * have no email to claim with — by design; invites stay an email flow).
  *
+ * Envelope + (prevState, formData) signature match the one-action-envelope
+ * convention (actions/discoveries.ts) so the GuestButton island can dispatch
+ * via useActionState — the SAME dispatch path every other working action in
+ * this app uses. A Server-Component `<form action={serverFn}>` was tried
+ * first and silently failed in the production build (the action never ran;
+ * the 2026-10-07 deploy's button was dead in real browsers). Client islands
+ * are the proven dispatch path.
+ *
  * Every guest is identifiable for post-phase cleanup: email stays NULL and
  * the name is "Guest-xxxxxxxx". Cleanup = delete Users where email IS NULL
- * (sessions cascade). To end the phase: remove the button on
+ * (sessions cascade). To end the phase: remove the GuestButton from
  * /auth/signin and delete this file.
+ *
+ * The action takes no arguments and returns void after setting the session
+ * cookie — it does NOT call redirect(): redirect-from-action is the one
+ * pattern no other action in this app uses, and it broke the production
+ * dispatch path (500 in the prod build; fine in dev). The island navigates
+ * client-side instead (the create-discovery-form pattern). Failures throw
+ * and are surfaced by the island's catch (the generic NFR8 line).
  */
 export async function signInAsGuest(): Promise<void> {
-  const suffix = randomUUID().replace(/-/g, "").slice(0, 8);
-  const user = await prisma.user.create({
-    data: { name: `Guest-${suffix}` },
-    select: { id: true },
-  });
-  const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  const sessionToken = randomUUID();
-  await prisma.session.create({
-    data: { sessionToken, userId: user.id, expires },
-  });
+  let sessionToken: string;
+  let expires: Date;
+  try {
+    const suffix = randomUUID().replace(/-/g, "").slice(0, 8);
+    const user = await prisma.user.create({
+      data: { name: `Guest-${suffix}` },
+      select: { id: true },
+    });
+    expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    sessionToken = randomUUID();
+    await prisma.session.create({
+      data: { sessionToken, userId: user.id, expires },
+    });
+  } catch (error) {
+    console.error("signInAsGuest failed:", error);
+    throw new Error("Something went wrong. Please try again.");
+  }
   // Cookie options mirror Auth.js's database-session defaults (name,
-  // httpOnly, lax, root path; secure on https). redirect() throws by
-  // design — it must stay outside any try/catch.
+  // httpOnly, lax, root path; secure on https).
   const cookieStore = await cookies();
   cookieStore.set("authjs.session-token", sessionToken, {
     httpOnly: true,
@@ -45,5 +65,4 @@ export async function signInAsGuest(): Promise<void> {
     secure: process.env.NODE_ENV === "production",
     expires,
   });
-  redirect("/");
 }
