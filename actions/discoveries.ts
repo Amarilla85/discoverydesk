@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import {
   CollaboratorRole,
   LifecycleState,
@@ -9,10 +10,11 @@ import {
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { PHASE_ORDER } from "@/lib/constants";
+import { signInviteToken } from "@/lib/invite-token";
 import { prisma } from "@/lib/prisma";
 import { resolveCollaboratorRole } from "@/lib/permissions";
 import { discoverySchema } from "@/lib/schemas/discovery";
-import { inviteSchema } from "@/lib/schemas/invite";
+import { inviteLinkSchema, inviteSchema } from "@/lib/schemas/invite";
 
 // Story 1.4 — first Server Action (AD-10). Every export in a "use server"
 // file must be an async function; shared types below are erased at compile.
@@ -632,6 +634,123 @@ export async function inviteCollaborator(
     return result;
   } catch (error) {
     console.error("inviteCollaborator failed:", error);
+    return {
+      ok: false,
+      error: {
+        code: "server_error",
+        message: "Something went wrong. Please try again.",
+      },
+    };
+  }
+}
+
+/*
+ * Story 4.1 (FR3, Decision 2026-10-09, AD-2 override) — generate a
+ * role-encoded invite link. The magic-link email no longer transports the
+ * invite (Resend's unverified-domain restriction delivers to the Owner only):
+ * instead the caller gets a `{origin}/invite/{token}` URL to share through
+ * their own channels (Slack, their own mail client). The token is stateless —
+ * HMAC-signed payload encoding discoveryId + role + expiry, signed with
+ * AUTH_SECRET (lib/invite-token.ts; no Invitation table, no DB write here).
+ *
+ * The invitee redeems the token at signup (app/invite/[token] →
+ * signUpWithInvite in actions/auth.ts): email + password account, then a
+ * claimed Collaborator row at the token's role. No pending row is created —
+ * the legacy inviteCollaborator flow above stays for pre-existing pending
+ * rows (claimed via magic-link sign-in, lib/auth.ts events.signIn).
+ *
+ * Permission: identical to inviteCollaborator — Owner or BA Collaborator
+ * (`resolveCollaboratorRole` is the rule); others get `forbidden` /
+ * `not_found` (no existence leak). Story 4.2 extends the grant to guests
+ * (Stakeholder-role links only) — this action intentionally does NOT
+ * special-case guests yet; the guest story owns that change.
+ *
+ * No revalidatePath: nothing server-rendered changes (the sheet's UI state
+ * is client-side). No DB write: the token is pure HMAC (see
+ * lib/invite-token.ts for the revocation/expiry tradeoffs, accepted for the
+ * test phase).
+ */
+export type InviteLinkState =
+  | { ok: true; url: string }
+  | { ok: false; error: { code: string; message: string; field?: string } };
+
+export async function generateInviteLink(
+  _prevState: InviteLinkState | null,
+  formData: FormData,
+): Promise<InviteLinkState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      ok: false,
+      error: { code: "auth_required", message: "You must be signed in." },
+    };
+  }
+
+  const parsed = inviteLinkSchema.safeParse({
+    discoveryId: formData.get("discoveryId") ?? "",
+    role: formData.get("role") ?? "",
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message: "Invalid invite request.",
+        field: parsed.error.errors[0]?.path[0]?.toString(),
+      },
+    };
+  }
+
+  try {
+    // Same access filter + BA gate as inviteCollaborator (one query, read-only).
+    const discovery = await prisma.discovery.findFirst({
+      where: {
+        id: parsed.data.discoveryId,
+        OR: [{ ownerId: userId }, { collaborators: { some: { userId } } }],
+      },
+      select: {
+        ownerId: true,
+        collaborators: { select: { userId: true, role: true } },
+      },
+    });
+    if (!discovery) {
+      return {
+        ok: false,
+        error: { code: "not_found", message: "Discovery not found." },
+      };
+    }
+    const viewerRole = resolveCollaboratorRole({
+      isOwner: discovery.ownerId === userId,
+      collaboratorRole:
+        discovery.collaborators.find((c) => c.userId === userId)?.role ?? null,
+    });
+    if (viewerRole !== "BA") {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message:
+            "Only the Owner or a BA Collaborator can invite collaborators.",
+        },
+      };
+    }
+
+    const token = signInviteToken({
+      discoveryId: parsed.data.discoveryId,
+      kind: "collaborator",
+      role: parsed.data.role,
+    });
+    // Build the absolute URL from the request headers (never a hardcoded
+    // origin — the AUTH_URL lesson from 1.2). Behind Railway's proxy the
+    // proto arrives via x-forwarded-proto; fall back to http for a local
+    // `next start`.
+    const headerList = await headers();
+    const host = headerList.get("host") ?? "localhost:3000";
+    const proto = headerList.get("x-forwarded-proto") ?? "http";
+    return { ok: true, url: `${proto}://${host}/invite/${token}` };
+  } catch (error) {
+    console.error("generateInviteLink failed:", error);
     return {
       ok: false,
       error: {

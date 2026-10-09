@@ -55,6 +55,11 @@ model User {
   id            String    @id @default(cuid())
   name          String?
   email         String?   @unique
+  // Story 4.1 (FR3, Decision 2026-10-09, AD-2 override): bcrypt hash for
+  // invite-gated email+password accounts. NULL for magic-link users (the
+  // Owner) and guests (email IS NULL) — those never sign in with a password.
+  // Store only the hash, never the password (AD-2 override clause).
+  passwordHash  String?
   emailVerified DateTime?
   image         String?
   createdAt     DateTime  @default(now())
@@ -165,8 +170,10 @@ model Phase {
 }
 
 // Invite model: userId is null while the invite is pending; claimed (userId
-// set) on first sign-in with a matching email. No Invitation table, no token —
-// magic-link sign-in already proves email ownership.
+// set) on first sign-in. Since Story 4.1 (Decision 2026-10-09) invites are
+// stateless signed links (lib/invite-token.ts — no Invitation table): a link
+// invite claims its row at signup with the token's role. Rows left pending by
+// the legacy magic-link flow are still claimed by the events.signIn hook.
 model Collaborator {
   id          String           @id @default(cuid())
   discoveryId String

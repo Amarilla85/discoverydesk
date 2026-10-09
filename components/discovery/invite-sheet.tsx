@@ -2,24 +2,34 @@
 
 import type { CollaboratorRole } from "@prisma/client";
 import { ChevronDown, X, UserPlus } from "lucide-react";
-import { signIn } from "next-auth/react";
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  inviteCollaborator,
-  type InviteCollaboratorState,
+  generateInviteLink,
+  type InviteLinkState,
 } from "@/actions/discoveries";
 import { Button } from "@/components/ui/button";
 import { Toast } from "@/components/ui/toast";
 import { acquirePause } from "@/hooks/use-collaboration";
 import { FOCUSABLE_SELECTOR, useFocusTrap } from "@/hooks/use-focus-trap";
-import { signInSchema } from "@/lib/schemas/auth";
 
 /*
- * Story 3.1 (FR3, UX-DR14) — the invite sheet: a right-side drawer opened
+ * Story 3.1/4.1 (FR3, UX-DR14) — the invite sheet: a right-side drawer opened
  * from the top bar's Invite button. Header "Invite Collaborators" + close
- * button; email input + role select + "Send Invite"; the collaborator list
- * (pending invites included) below.
+ * button; role select + "Copy invite link"; the collaborator list (legacy
+ * pending invites included) below.
+ *
+ * INVITES ARE LINK-BASED SINCE 4.1 (Decision 2026-10-09): the email handoff
+ * (inviteCollaborator + awaited signIn("email")) is REMOVED — Resend 403s
+ * every recipient except the Owner, so magic-link invitations could never
+ * reach real collaborators. Instead the Owner/BA picks a role, the action
+ * mints a signed role-encoded token (lib/invite-token.ts, stateless HMAC —
+ * no Invitation table), and the sheet copies `/invite/{token}` to the
+ * clipboard for sharing over any channel. The invitee lands on the invite
+ * page and creates an email+password account (actions/auth.ts). Legacy
+ * pending Collaborator rows from the magic-link era still render with the
+ * Pending badge and are still claimed by the events.signIn hook — no new
+ * list semantics (Task 6.2).
  *
  * Geometry/a11y skeleton mirrors the hand-rolled overlay precedents —
  * components/layout/mobile-nav.tsx (side panel over bg-modal-overlay,
@@ -33,17 +43,10 @@ import { signInSchema } from "@/lib/schemas/auth";
  * comments — released in the open-effect cleanup, so Escape, backdrop, and
  * any future close path all release (the release is idempotent).
  *
- * The invite EMAIL (AC 2): after inviteCollaborator commits the pending row,
- * this island calls signIn("email", { email, callbackUrl }) — the standard
- * NextAuth magic-link flow becomes the invite email, and its verification
- * URL embeds callbackUrl, so the link lands on this Discovery. Rationale
- * (story Task 3): the hand-rolled Resend provider in lib/auth.ts is the only
- * sender; a server-side custom email would duplicate VerificationToken
- * creation AND the sha256(token + secret) storage convention (a hand-rolled
- * token row is silently unclickable — the 1.2 debug lesson) AND the Resend
- * fetch. signIn is awaited with try/catch (the 1.2 review bug: fire-and-
- * forget showed false success); on failure the row still exists and
- * re-clicking Send Invite is an idempotent upsert + re-send.
+ * Clipboard (Task 6.1): on `ok` the island writes the URL via
+ * navigator.clipboard (secure contexts) and toasts "Invite link copied.".
+ * Clipboard unavailability/failure (non-secure contexts, denied permission)
+ * falls back to a read-only input with the URL for manual copy.
  *
  * MOUNT CONTRACT: TopBar renders this island (trigger included) whenever
  * `invite` is provided with canInvite — the island owns trigger + sheet so
@@ -53,7 +56,9 @@ export type InviteSheetCollaborator = {
   id: string;
   email: string;
   role: CollaboratorRole;
-  // userId === null — the invite has not been claimed by a sign-in yet.
+  // userId === null — a legacy (magic-link era) invite not yet claimed by a
+  // sign-in. New link invites claim their row at signup, so they never show
+  // as pending.
   pending: boolean;
   name?: string;
 };
@@ -72,12 +77,10 @@ export function InviteSheet({
   collaborators: InviteSheetCollaborator[];
 }) {
   const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
   const [role, setRole] = useState<CollaboratorRole>("Stakeholder");
-  // Client-side pre-validation error ( signInSchema) — blocks the dispatch
-  // entirely (AC 4: invalid email → "the invite is not sent"). The server
-  // envelope stays the backstop for tampered POSTs (AD-12).
-  const [clientError, setClientError] = useState<string | null>(null);
+  // Set only when the clipboard write fails — the read-only manual-copy
+  // fallback shows the URL until the next attempt replaces it.
+  const [manualUrl, setManualUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     id: number;
     variant: "success" | "destructive";
@@ -92,7 +95,7 @@ export function InviteSheet({
 
   useEffect(() => {
     if (!open) return;
-    // Focus the email input (first focusable in the panel). focus() is a DOM
+    // Focus the role select (first focusable in the panel). focus() is a DOM
     // write — lint-safe in an effect, same as the drawer/modal pattern.
     panelRef.current
       ?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
@@ -124,14 +127,14 @@ export function InviteSheet({
     setOpen(true);
   };
 
-  const inviteAction = useCallback(
+  const copyLinkAction = useCallback(
     async (
-      _prevState: InviteCollaboratorState | null,
+      _prevState: InviteLinkState | null,
       formData: FormData,
-    ): Promise<InviteCollaboratorState> => {
-      let result: InviteCollaboratorState;
+    ): Promise<InviteLinkState> => {
+      let result: InviteLinkState;
       try {
-        result = await inviteCollaborator(null, formData);
+        result = await generateInviteLink(null, formData);
       } catch {
         result = {
           ok: false,
@@ -143,30 +146,29 @@ export function InviteSheet({
       }
       toastSeqRef.current += 1;
       if (result.ok) {
-        // Row committed: clear the input for the next invite and confirm.
-        setEmail("");
+        // Clipboard API exists only in secure contexts — feature-detect, and
+        // treat a rejected write the same as an absent API (manual fallback).
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+          try {
+            await navigator.clipboard.writeText(result.url);
+            setManualUrl(null);
+            setToast({
+              id: toastSeqRef.current,
+              variant: "success",
+              message: "Invite link copied.",
+            });
+            setToastClosed(false);
+            return result;
+          } catch {
+            // fall through to the manual-copy fallback
+          }
+        }
+        setManualUrl(result.url);
         setToast({
           id: toastSeqRef.current,
-          variant: "success",
-          message: "Invite sent.",
+          variant: "destructive",
+          message: "Couldn't copy the link. Copy it manually below.",
         });
-        // The email send rides the existing magic-link pipeline (see the
-        // file comment). A send failure leaves the pending row in place —
-        // re-clicking Send Invite re-sends (upsert is a no-op write).
-        const inviteeEmail = String(formData.get("email") ?? "");
-        try {
-          await signIn("email", {
-            email: inviteeEmail,
-            callbackUrl: `/discoveries/${discoveryId}`,
-          });
-        } catch {
-          toastSeqRef.current += 1;
-          setToast({
-            id: toastSeqRef.current,
-            variant: "destructive",
-            message: "Invite saved, but the email couldn't be sent. Try again.",
-          });
-        }
       } else {
         // Retryable failure: keep the sheet state, surface the message.
         setToast({
@@ -178,36 +180,25 @@ export function InviteSheet({
       setToastClosed(false);
       return result;
     },
-    [discoveryId],
+    [],
   );
 
-  const [state, dispatch, isPending] = useActionState(inviteAction, null);
+  // The envelope error is surfaced via the toast, so the state slot stays
+  // unused (link invites have no field-level form errors — the role select
+  // only offers valid roles).
+  const [, dispatch, isPending] = useActionState(copyLinkAction, null);
 
-  const handleSend = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleCopy = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // Implicit submission (Enter in the email field) fires even with the Send
-    // button disabled — serialize it out here, not just on the button.
+    // Implicit submission (Enter in the select) fires even with the button
+    // disabled — serialize it out here, not just on the button (3.1 review
+    // fix pattern).
     if (isPending) return;
-    const parsed = signInSchema.safeParse(email);
-    if (!parsed.success) {
-      setClientError("Please enter a valid email address.");
-      return;
-    }
-    setClientError(null);
     const formData = new FormData();
     formData.set("discoveryId", discoveryId);
-    formData.set("email", email);
     formData.set("role", role);
     dispatch(formData);
   };
-
-  // The inline error below the email input (UX-DR10: destructive message
-  // below the field): client pre-validation wins; otherwise the action's
-  // envelope error for the email field.
-  const actionError = state && !state.ok ? state.error : null;
-  const emailError =
-    clientError ??
-    (actionError?.field === "email" ? actionError.message : null);
 
   return (
     <>
@@ -249,35 +240,7 @@ export function InviteSheet({
               </button>
             </div>
 
-            <form onSubmit={handleSend} aria-label="Invite a collaborator" className="flex flex-col gap-2">
-              <label htmlFor="invite-email" className="text-label text-on-surface">
-                Email
-              </label>
-              <input
-                id="invite-email"
-                name="email"
-                type="text"
-                autoComplete="off"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                aria-invalid={emailError ? true : undefined}
-                aria-describedby={emailError ? "invite-email-error" : undefined}
-                className={
-                  emailError
-                    ? // UX-DR10 error state: 2px destructive border (Task 4.4).
-                      "h-10 rounded-sm border-2 border-destructive bg-surface px-3 text-body text-on-surface placeholder:text-on-surface-disabled"
-                    : "h-10 rounded-sm border border-outline bg-surface px-3 text-body text-on-surface placeholder:text-on-surface-disabled"
-                }
-              />
-              {emailError ? (
-                <p
-                  id="invite-email-error"
-                  role="alert"
-                  className="text-body-sm text-destructive"
-                >
-                  {emailError}
-                </p>
-              ) : null}
+            <form onSubmit={handleCopy} aria-label="Copy an invite link" className="flex flex-col gap-2">
               <label htmlFor="invite-role" className="text-label text-on-surface">
                 Role
               </label>
@@ -299,14 +262,33 @@ export function InviteSheet({
                 />
               </div>
               <p className="text-body-sm text-on-surface-variant">
-                Stakeholders view and comment. BAs edit phases and can invite
-                others.
+                Stakeholders view, comment, and sign off. BAs also edit phases
+                and can invite others. The link works for 30 days — share it
+                with one person at a time.
               </p>
               <div>
                 <Button type="submit" disabled={isPending}>
-                  {isPending ? "Sending…" : "Send Invite"}
+                  {isPending ? "Copying…" : "Copy invite link"}
                 </Button>
               </div>
+              {manualUrl ? (
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="invite-manual-url"
+                    className="text-label text-on-surface"
+                  >
+                    Invite link
+                  </label>
+                  <input
+                    id="invite-manual-url"
+                    type="text"
+                    readOnly
+                    value={manualUrl}
+                    onFocus={(event) => event.target.select()}
+                    className="h-10 rounded-sm border border-outline bg-surface px-3 text-body-sm text-on-surface"
+                  />
+                </div>
+              ) : null}
             </form>
 
             <div className="flex flex-col gap-1">
@@ -351,7 +333,7 @@ export function InviteSheet({
 }
 
 /*
- * One list row (UX-DR14: email + role, pending invites included). The
+ * One list row (UX-DR14: email + role, legacy pending invites included). The
  * "Pending" badge reuses the badge-in-review tokens (the hand-rolled
  * discovery-state-badge anatomy — no Badge component exists by design).
  */

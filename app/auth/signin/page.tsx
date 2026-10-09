@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { GuestButton } from "@/components/auth/guest-button";
 import { auth } from "@/lib/auth";
+import { PasswordSignInForm } from "./password-sign-in-form";
 import { SignInForm } from "./sign-in-form";
 
 // Story 1.2: sign-in page (AC 1, 4, 5). Plain functional markup — the design
@@ -17,8 +18,16 @@ export default async function SignInPage({
   const params = await searchParams;
   const rawCallbackUrl = typeof params.callbackUrl === "string" ? params.callbackUrl : undefined;
   // Only honor relative callback URLs — the email-link redirect is rejected
-  // for unknown hosts otherwise (Story 1.2 Dev Notes).
-  const callbackUrl = rawCallbackUrl?.startsWith("/") ? rawCallbackUrl : undefined;
+  // for unknown hosts otherwise (Story 1.2 Dev Notes). A leading "//" is a
+  // protocol-relative URL (the browser resolves it against another origin),
+  // so it is NOT relative — reject it too (code-review fix, 2026-10-09):
+  // without this, /auth/signin?callbackUrl=//evil.com redirects off-site
+  // after sign-in via both the magic-link handoff and the password form's
+  // window.location.assign.
+  const callbackUrl =
+    rawCallbackUrl?.startsWith("/") && !rawCallbackUrl.startsWith("//")
+      ? rawCallbackUrl
+      : undefined;
   const error = typeof params.error === "string" ? params.error : undefined;
 
   return (
@@ -35,7 +44,22 @@ export default async function SignInPage({
           </p>
         </div>
       ) : (
-        <SignInForm callbackUrl={callbackUrl} />
+        <>
+          <SignInForm callbackUrl={callbackUrl} />
+
+          {/* Story 4.1 (FR3, AC 6): collaborators with accounts sign in with
+              email + password; the Owner keeps the magic link above. */}
+          <div
+            style={{
+              marginTop: "2rem",
+              borderTop: "1px solid hsl(0 0% 90%)",
+              paddingTop: "1.5rem",
+            }}
+          >
+            <p style={{ fontWeight: 600 }}>Have a password? Sign in.</p>
+            <PasswordSignInForm callbackUrl={callbackUrl} />
+          </div>
+        </>
       )}
 
       {/* Testing-phase guest pass (Mar, 2026-10-07): anyone with the link

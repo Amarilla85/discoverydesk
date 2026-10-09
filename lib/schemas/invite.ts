@@ -18,3 +18,13 @@ export const inviteSchema = z.object({
   email: signInSchema,
   role: z.nativeEnum(CollaboratorRole),
 });
+
+// Story 4.1 (FR3, Decision 2026-10-09): the invite-link form shape — role +
+// Discovery, NO email (the link replaces the magic-link email as the invite
+// transport; the invitee picks their own email at signup). The legacy
+// inviteSchema above stays for inviteCollaborator (pre-existing pending rows
+// still claim via magic-link sign-in).
+export const inviteLinkSchema = z.object({
+  discoveryId: z.string().min(1),
+  role: z.nativeEnum(CollaboratorRole),
+});
