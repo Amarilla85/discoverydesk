@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { CreateDiscoveryForm } from "@/components/discovery/create-discovery-form";
@@ -7,6 +8,7 @@ import {
   type DiscoveryListItem,
 } from "@/components/discovery/discovery-list";
 import { DiscoveryListSkeleton } from "@/components/discovery/discovery-list-skeleton";
+import { isAdminEmail } from "@/lib/admin";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -40,6 +42,11 @@ export default async function DiscoveriesPage({
   const userId = session?.user?.id;
   if (!userId) redirect("/auth/signin");
 
+  // Testing-phase admin overview (2026-10-08, lib/admin.ts): the app owner
+  // gets the entry link to the read-only all-Discoveries view. Every other
+  // account — guests included (NULL email) — renders nothing here.
+  const adminEmail = isAdminEmail(session.user?.email);
+
   // AppShell renders per-page since Story 2.1: the workspace phase page needs
   // to pass the Discovery name into the top bar, and a layout cannot read a
   // child route's params. The list has no Discovery name — center slot empty,
@@ -48,6 +55,14 @@ export default async function DiscoveriesPage({
     <AppShell>
       <section className="flex flex-col gap-6">
         <h1 className="text-display-sm text-on-surface">Discoveries</h1>
+        {adminEmail ? (
+          <Link
+            href="/admin/discoveries"
+            className="inline-block rounded-sm text-body-sm text-primary underline underline-offset-2"
+          >
+            All discoveries (owner overview)
+          </Link>
+        ) : null}
         <Suspense fallback={<DiscoveryListSkeleton />}>
           <DiscoveryListSection activeId={activeId} userId={userId} />
         </Suspense>
