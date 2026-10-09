@@ -1,6 +1,6 @@
 # DiscoveryDesk
 
-A 7-phase guided product discovery platform (BA workspace with stakeholder sign-off), built with Next.js 16 (App Router), Prisma 6 + PostgreSQL, and NextAuth v5 magic-link auth via Resend.
+A 6-phase guided product discovery platform (BA workspace with stakeholder sign-off), built with Next.js 16 (App Router), Prisma 6 + PostgreSQL, and NextAuth v5 magic-link auth via Resend.
 
 ## Local development
 

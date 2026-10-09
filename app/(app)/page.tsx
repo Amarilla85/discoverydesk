@@ -55,6 +55,14 @@ export default async function DiscoveriesPage({
     <AppShell>
       <section className="flex flex-col gap-6">
         <h1 className="text-display-sm text-on-surface">Discoveries</h1>
+        <p className="max-w-prose text-body text-on-surface-variant">
+          DiscoveryDesk walks you through a 6-phase product discovery —
+          Persona, Pain/Gain, Value Proposition, Business Model, Vision,
+          Business Case — each one unlocking as the previous is approved. Work
+          alone or invite stakeholders to collaborate on each phase, capture
+          their feedback, and collect their sign-off, so every Discovery ends
+          with a complete, auditable record of what was decided and why.
+        </p>
         {adminEmail ? (
           <Link
             href="/admin/discoveries"
