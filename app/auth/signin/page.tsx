@@ -1,14 +1,20 @@
 import { redirect } from "next/navigation";
 import { GuestButton } from "@/components/auth/guest-button";
 import { auth } from "@/lib/auth";
-import { SignInPanel } from "./sign-in-panel";
+import { PasswordSignInForm } from "./password-sign-in-form";
 
 // Story 1.2: sign-in page (AC 1, 4, 5). Plain functional markup — the design
 // system is Story 1.3. Already signed in? Go straight to the Discovery List
-// (home route until Story 1.5). Since the 4.1 UX amendment (Mar, 2026-10-12)
-// the two auth forms render one-at-a-time via SignInPanel: email+password
-// primary, magic link one toggle away (the stacked layout read as "double
-// sign-in").
+// (home route until Story 1.5).
+//
+// Mar, 2026-10-12 (Decision log entry): the sign-in screen offers ONLY
+// email+password (the 4.1 collaborator path) and the testing-phase guest
+// pass. The magic-link REQUEST form is removed — Resend cannot send from
+// croz.net until the domain is verified, and even with a verified domain a
+// received link signs you in directly (no paste field ever needed). The
+// email provider in lib/auth.ts stays: click-through verification links
+// must keep working, and the form can return if a future story wants it.
+// A received-but-expired link lands in the `error` branch below.
 export default async function SignInPage({
   searchParams,
 }: {
@@ -24,8 +30,7 @@ export default async function SignInPage({
   // protocol-relative URL (the browser resolves it against another origin),
   // so it is NOT relative — reject it too (code-review fix, 2026-10-09):
   // without this, /auth/signin?callbackUrl=//evil.com redirects off-site
-  // after sign-in via both the magic-link handoff and the password form's
-  // window.location.assign.
+  // after sign-in via the password form's window.location.assign.
   const callbackUrl =
     rawCallbackUrl?.startsWith("/") && !rawCallbackUrl.startsWith("//")
       ? rawCallbackUrl
@@ -36,9 +41,11 @@ export default async function SignInPage({
     <main id="main-content" style={{ padding: "4rem 2rem", maxWidth: "480px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Sign in to DiscoveryDesk</h1>
       {error ? (
-        // AC 3 — expired/used/invalid verification link landed back here.
+        // An expired/used/invalid verification link landed back here. The
+        // request form no longer exists (2026-10-12 decision) — the copy no
+        // longer promises one.
         <div style={{ marginTop: "1rem" }}>
-          <p>This sign-in link has expired. Request a new one.</p>
+          <p>This sign-in link has expired or was already used.</p>
           <p>
             <a href="/auth/signin" style={{ color: "hsl(0 0% 45.1%)" }}>
               Back to sign in
@@ -46,7 +53,7 @@ export default async function SignInPage({
           </p>
         </div>
       ) : (
-        <SignInPanel callbackUrl={callbackUrl} />
+        <PasswordSignInForm callbackUrl={callbackUrl} />
       )}
 
       {/* Testing-phase guest pass (Mar, 2026-10-07): anyone with the link
