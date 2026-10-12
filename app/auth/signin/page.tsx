@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
 import { GuestButton } from "@/components/auth/guest-button";
 import { auth } from "@/lib/auth";
-import { PasswordSignInForm } from "./password-sign-in-form";
-import { SignInForm } from "./sign-in-form";
+import { SignInPanel } from "./sign-in-panel";
 
 // Story 1.2: sign-in page (AC 1, 4, 5). Plain functional markup — the design
 // system is Story 1.3. Already signed in? Go straight to the Discovery List
-// (home route until Story 1.5).
+// (home route until Story 1.5). Since the 4.1 UX amendment (Mar, 2026-10-12)
+// the two auth forms render one-at-a-time via SignInPanel: email+password
+// primary, magic link one toggle away (the stacked layout read as "double
+// sign-in").
 export default async function SignInPage({
   searchParams,
 }: {
@@ -44,22 +46,7 @@ export default async function SignInPage({
           </p>
         </div>
       ) : (
-        <>
-          <SignInForm callbackUrl={callbackUrl} />
-
-          {/* Story 4.1 (FR3, AC 6): collaborators with accounts sign in with
-              email + password; the Owner keeps the magic link above. */}
-          <div
-            style={{
-              marginTop: "2rem",
-              borderTop: "1px solid hsl(0 0% 90%)",
-              paddingTop: "1.5rem",
-            }}
-          >
-            <p style={{ fontWeight: 600 }}>Have a password? Sign in.</p>
-            <PasswordSignInForm callbackUrl={callbackUrl} />
-          </div>
-        </>
+        <SignInPanel callbackUrl={callbackUrl} />
       )}
 
       {/* Testing-phase guest pass (Mar, 2026-10-07): anyone with the link
