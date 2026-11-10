@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Settings } from "lucide-react";
 
 import { MarkApprovedButton } from "./mark-approved-button";
 import { EditableDiscoveryName } from "./editable-discovery-name";
@@ -122,13 +121,6 @@ export function TopBar({
             collaborators={invite.collaborators}
           />
         ) : null}
-        <button
-          type="button"
-          aria-label="Settings"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-on-surface hover:bg-hover-overlay"
-        >
-          <Settings className="size-4" aria-hidden="true" />
-        </button>
       </div>
     </header>
   );
