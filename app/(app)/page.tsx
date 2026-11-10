@@ -42,6 +42,33 @@ export default async function DiscoveriesPage({
   const userId = session?.user?.id;
   if (!userId) redirect("/auth/signin");
 
+  // Story 4.2 (ACs 6/7) — scoped-guest redirect. The two guest populations
+  // are distinguished by email NULL + Collaborator rows (review Decision
+  // 2026-11-10: scoped = HAS Collaborator rows, regardless of owned count —
+  // a guest who somehow also owns a Discovery is redirected like any other,
+  // so the hybrid never reaches the list/create surface createDiscovery
+  // would reject):
+  //  - SHARE-LINK guests (email NULL, ≥1 Collaborator row): redirected to
+  //    their shared Discovery — they never see the list or any other
+  //    Discovery (server-side scoping, not UI hiding — NFR9).
+  //  - SANDBOX guests (email NULL, ZERO Collaborator rows, own Discoveries):
+  //    fall through and keep their list + create surface (AC 7).
+  //  A sandbox guest who later joins via a share link now HAS a Collaborator
+  //  row — they become scoped, the AC 7 intended consequence.
+  //  The redirect target is their most recent shared Discovery (join order,
+  //  createdAt desc); if it was deleted since, the workspace notFound page
+  //  is the right landing — no special handling.
+  if (!session.user?.email) {
+    const latestCollaboration = await prisma.collaborator.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { discoveryId: true },
+    });
+    if (latestCollaboration) {
+      redirect(`/discoveries/${latestCollaboration.discoveryId}`);
+    }
+  }
+
   // Testing-phase admin overview (2026-10-08, lib/admin.ts): the app owner
   // gets the entry link to the read-only all-Discoveries view. Every other
   // account — guests included (NULL email) — renders nothing here.

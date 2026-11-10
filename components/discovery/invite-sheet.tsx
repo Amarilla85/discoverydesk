@@ -2,9 +2,17 @@
 
 import type { CollaboratorRole } from "@prisma/client";
 import { ChevronDown, X, UserPlus } from "lucide-react";
-import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
+  generateGuestLink,
   generateInviteLink,
   type InviteLinkState,
 } from "@/actions/discoveries";
@@ -51,6 +59,21 @@ import { FOCUSABLE_SELECTOR, useFocusTrap } from "@/hooks/use-focus-trap";
  * MOUNT CONTRACT: TopBar renders this island (trigger included) whenever
  * `invite` is provided with canInvite — the island owns trigger + sheet so
  * the success toast survives the action's revalidation flight.
+ *
+ * Story 4.2 (ACs 1/5, Decision 2026-10-09): the sheet gains the guest
+ * variant. `isGuest` (undefined = false, the markApproved prop pattern)
+ * comes from the phase page (session email NULL) and switches the sheet:
+ *  - BA viewer (`isGuest` false): the role select keeps BOTH options, and a
+ *    second "Copy guest link" button appears in its own labeled section —
+ *    role links create ACCOUNTS (email + password at the chosen role); the
+ *    guest link does not (display-name join, Stakeholder rights only).
+ *  - Guest viewer: the role select offers ONLY Stakeholder (the server
+ *    forces Stakeholder for guest callers anyway — the UI just mirrors the
+ *    grant), and the guest-link button is hidden (guests can never mint one;
+ *    the AC 1 backstop is generateGuestLink's BA-only guard).
+ * The two copy buttons dispatch to their own action instances (one shared
+ * clipboard/toast factory below) so toasts and the manual-copy fallback
+ * behave identically (AC 1: both toast "Invite link copied.").
  */
 export type InviteSheetCollaborator = {
   id: string;
@@ -67,11 +90,15 @@ const INVITE_SHEET_PAUSE_REASON = "invite-sheet";
 
 export function InviteSheet({
   discoveryId,
+  isGuest,
   ownerName,
   ownerEmail,
   collaborators,
 }: {
   discoveryId: string;
+  // Story 4.2: undefined = false (BA viewer — current behavior). True when
+  // the viewer joined via a share link (session email NULL).
+  isGuest?: boolean;
   ownerName?: string;
   ownerEmail?: string;
   collaborators: InviteSheetCollaborator[];
@@ -127,77 +154,110 @@ export function InviteSheet({
     setOpen(true);
   };
 
-  const copyLinkAction = useCallback(
-    async (
+  // Story 4.2: one clipboard/toast factory, two action instances — the role
+  // link dispatch (generateInviteLink) and the guest link dispatch
+  // (generateGuestLink) share identical clipboard + toast handling (AC 1:
+  // both toast "Invite link copied." on success). The factory keeps the
+  // sheets' behavior in ONE place so the two buttons can never drift.
+  const makeCopyAction = useCallback(
+    (
+      generate: typeof generateInviteLink,
+    ): ((
       _prevState: InviteLinkState | null,
       formData: FormData,
-    ): Promise<InviteLinkState> => {
-      let result: InviteLinkState;
-      try {
-        result = await generateInviteLink(null, formData);
-      } catch {
-        result = {
-          ok: false,
-          error: {
-            code: "network_error",
-            message: "Something went wrong. Please try again.",
-          },
-        };
-      }
-      toastSeqRef.current += 1;
-      if (result.ok) {
-        // Clipboard API exists only in secure contexts — feature-detect, and
-        // treat a rejected write the same as an absent API (manual fallback).
-        if (typeof navigator !== "undefined" && navigator.clipboard) {
-          try {
-            await navigator.clipboard.writeText(result.url);
-            setManualUrl(null);
-            setToast({
-              id: toastSeqRef.current,
-              variant: "success",
-              message: "Invite link copied.",
-            });
-            setToastClosed(false);
-            return result;
-          } catch {
-            // fall through to the manual-copy fallback
-          }
+    ) => Promise<InviteLinkState>) => {
+      return async (_prevState, formData) => {
+        let result: InviteLinkState;
+        try {
+          result = await generate(null, formData);
+        } catch {
+          result = {
+            ok: false,
+            error: {
+              code: "network_error",
+              message: "Something went wrong. Please try again.",
+            },
+          };
         }
-        setManualUrl(result.url);
-        setToast({
-          id: toastSeqRef.current,
-          variant: "destructive",
-          message: "Couldn't copy the link. Copy it manually below.",
-        });
-      } else {
-        // Retryable failure: keep the sheet state, surface the message.
-        setToast({
-          id: toastSeqRef.current,
-          variant: "destructive",
-          message: result.error.message,
-        });
-      }
-      setToastClosed(false);
-      return result;
+        toastSeqRef.current += 1;
+        if (result.ok) {
+          // Clipboard API exists only in secure contexts — feature-detect, and
+          // treat a rejected write the same as an absent API (manual fallback).
+          if (typeof navigator !== "undefined" && navigator.clipboard) {
+            try {
+              await navigator.clipboard.writeText(result.url);
+              setManualUrl(null);
+              setToast({
+                id: toastSeqRef.current,
+                variant: "success",
+                message: "Invite link copied.",
+              });
+              setToastClosed(false);
+              return result;
+            } catch {
+              // fall through to the manual-copy fallback
+            }
+          }
+          setManualUrl(result.url);
+          setToast({
+            id: toastSeqRef.current,
+            variant: "destructive",
+            message: "Couldn't copy the link. Copy it manually below.",
+          });
+        } else {
+          // Retryable failure: keep the sheet state, surface the message.
+          setToast({
+            id: toastSeqRef.current,
+            variant: "destructive",
+            message: result.error.message,
+          });
+        }
+        setToastClosed(false);
+        return result;
+      };
     },
     [],
+  );
+
+  const copyLinkAction = useMemo(
+    () => makeCopyAction(generateInviteLink),
+    [makeCopyAction],
+  );
+  const copyGuestLinkAction = useMemo(
+    () => makeCopyAction(generateGuestLink),
+    [makeCopyAction],
   );
 
   // The envelope error is surfaced via the toast, so the state slot stays
   // unused (link invites have no field-level form errors — the role select
   // only offers valid roles).
   const [, dispatch, isPending] = useActionState(copyLinkAction, null);
+  const [, dispatchGuest, isPendingGuest] = useActionState(
+    copyGuestLinkAction,
+    null,
+  );
+  const isPendingAny = isPending || isPendingGuest;
 
   const handleCopy = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // Implicit submission (Enter in the select) fires even with the button
     // disabled — serialize it out here, not just on the button (3.1 review
     // fix pattern).
-    if (isPending) return;
+    if (isPendingAny) return;
     const formData = new FormData();
     formData.set("discoveryId", discoveryId);
     formData.set("role", role);
     dispatch(formData);
+  };
+
+  // Story 4.2 (AC 1): the guest share link carries NO role — the kind is
+  // the only discriminator the token needs.
+  const handleCopyGuest = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isPendingAny) return;
+    const formData = new FormData();
+    formData.set("discoveryId", discoveryId);
+    dispatchGuest(formData);
   };
 
   return (
@@ -253,21 +313,26 @@ export function InviteSheet({
                   }
                   className="h-10 w-full appearance-none rounded-sm border border-outline bg-surface px-3 pr-8 text-body text-on-surface"
                 >
+                  {/* Story 4.2 (AC 5): guests see ONLY the Stakeholder option
+                      — the server forces Stakeholder for guest callers; the
+                      UI mirrors the grant. */}
                   <option value="Stakeholder">Stakeholder</option>
-                  <option value="BA">BA</option>
+                  {isGuest ? null : <option value="BA">BA</option>}
                 </select>
-                <ChevronDown
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant"
-                />
+                {isGuest ? null : (
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant"
+                  />
+                )}
               </div>
               <p className="text-body-sm text-on-surface-variant">
-                Stakeholders view, comment, and sign off. BAs also edit phases
-                and can invite others. The link works for 30 days — share it
-                with one person at a time.
+                {isGuest
+                  ? "Stakeholders view, comment, and sign off. The link works for 30 days — share it with one person at a time."
+                  : "Stakeholders view, comment, and sign off. BAs also edit phases and can invite others. The link works for 30 days — share it with one person at a time."}
               </p>
               <div>
-                <Button type="submit" disabled={isPending}>
+                <Button type="submit" disabled={isPendingAny}>
                   {isPending ? "Copying…" : "Copy invite link"}
                 </Button>
               </div>
@@ -290,6 +355,31 @@ export function InviteSheet({
                 </div>
               ) : null}
             </form>
+
+            {/* Story 4.2 (AC 1, Task 1.2): the guest share link — BA viewers
+                ONLY (guests can never mint one; the server backstop is
+                generateGuestLink's forbidden). The labeled section spells out
+                the difference: role links create accounts, the guest link
+                does not. */}
+            {isGuest ? null : (
+              <form
+                onSubmit={handleCopyGuest}
+                aria-label="Copy a guest link"
+                className="flex flex-col gap-2 border-t border-outline-variant pt-4"
+              >
+                <p className="text-label text-on-surface">Guest link</p>
+                <p className="text-body-sm text-on-surface-variant">
+                  The guest link does not create accounts: anyone with it joins
+                  by display name and can view, comment, sign off, submit
+                  phases for review, and invite Stakeholders in this Discovery.
+                </p>
+                <div>
+                  <Button type="submit" disabled={isPendingAny}>
+                    {isPendingGuest ? "Copying…" : "Copy guest link"}
+                  </Button>
+                </div>
+              </form>
+            )}
 
             <div className="flex flex-col gap-1">
               <p className="text-label text-on-surface-variant">Collaborators</p>

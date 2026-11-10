@@ -14,7 +14,7 @@ import { signInviteToken } from "@/lib/invite-token";
 import { prisma } from "@/lib/prisma";
 import { resolveCollaboratorRole } from "@/lib/permissions";
 import { discoverySchema } from "@/lib/schemas/discovery";
-import { inviteLinkSchema, inviteSchema } from "@/lib/schemas/invite";
+import { guestLinkSchema, inviteLinkSchema, inviteSchema } from "@/lib/schemas/invite";
 
 // Story 1.4 — first Server Action (AD-10). Every export in a "use server"
 // file must be an async function; shared types below are erased at compile.
@@ -48,6 +48,30 @@ export async function createDiscovery(
       ok: false,
       error: { code: "auth_required", message: "You must be signed in." },
     };
+  }
+
+  // Story 4.2 (AC 6/7) — scoped-guest guard: a share-link guest (email NULL
+  // WITH ≥1 Collaborator row) never creates Discoveries. The predicate is
+  // the two-population discriminator (see app/(app)/page.tsx's redirect):
+  // sandbox guests (email NULL, ZERO Collaborator rows) fall through and
+  // keep their create surface (AC 7); a sandbox guest who later joins a
+  // share link now HAS a Collaborator row and becomes scoped here too —
+  // the intended consequence. This action guard is the ONLY enforcement
+  // (scoped guests never see the list page, so no UI hiding is needed —
+  // the backstop covers tampered direct POSTs).
+  if (!session.user?.email) {
+    const collaborations = await prisma.collaborator.count({
+      where: { userId: ownerId },
+    });
+    if (collaborations > 0) {
+      return {
+        ok: false,
+        error: {
+          code: "not_permitted",
+          message: "Guests cannot create Discoveries.",
+        },
+      };
+    }
   }
 
   const parsed = discoverySchema.safeParse(formData.get("name") ?? "");
@@ -661,9 +685,13 @@ export async function inviteCollaborator(
  *
  * Permission: identical to inviteCollaborator — Owner or BA Collaborator
  * (`resolveCollaboratorRole` is the rule); others get `forbidden` /
- * `not_found` (no existence leak). Story 4.2 extends the grant to guests
- * (Stakeholder-role links only) — this action intentionally does NOT
- * special-case guests yet; the guest story owns that change.
+ * `not_found` (no existence leak). Story 4.2 (AC 5) extends the grant to
+ * guests: a guest caller (email NULL) may mint ACCOUNT invites too, but ONLY
+ * at the Stakeholder role — the server IGNORES the client's role field for
+ * guests and always signs Stakeholder (the "fewer envelopes" option from the
+ * story task: a guest tampering the POST to request a BA link simply gets a
+ * Stakeholder link, no `forbidden` round trip to leak the rule). BA callers
+ * keep both roles; non-guest Stakeholders stay `forbidden`.
  *
  * No revalidatePath: nothing server-rendered changes (the sheet's UI state
  * is client-side). No DB write: the token is pure HMAC (see
@@ -725,7 +753,10 @@ export async function generateInviteLink(
       collaboratorRole:
         discovery.collaborators.find((c) => c.userId === userId)?.role ?? null,
     });
-    if (viewerRole !== "BA") {
+    // Story 4.2 (AC 5): guests (email NULL) may mint Stakeholder invite
+    // links; every other non-BA member stays forbidden.
+    const isGuest = !session.user?.email;
+    if (viewerRole !== "BA" && !isGuest) {
       return {
         ok: false,
         error: {
@@ -739,7 +770,10 @@ export async function generateInviteLink(
     const token = signInviteToken({
       discoveryId: parsed.data.discoveryId,
       kind: "collaborator",
-      role: parsed.data.role,
+      // Guest callers are forced to Stakeholder regardless of the form's
+      // role field (see the permission note above) — a guest-requested BA
+      // link simply comes back as a Stakeholder link.
+      role: isGuest ? CollaboratorRole.Stakeholder : parsed.data.role,
     });
     // Build the absolute URL from the request headers (never a hardcoded
     // origin — the AUTH_URL lesson from 1.2). Behind Railway's proxy the
@@ -751,6 +785,110 @@ export async function generateInviteLink(
     return { ok: true, url: `${proto}://${host}/invite/${token}` };
   } catch (error) {
     console.error("generateInviteLink failed:", error);
+    return {
+      ok: false,
+      error: {
+        code: "server_error",
+        message: "Something went wrong. Please try again.",
+      },
+    };
+  }
+}
+
+/*
+ * Story 4.2 (AC 1, FR3, Decision 2026-10-09, AD-2 override) — generate the
+ * guest share link: a `{origin}/invite/{token}` URL whose token is kind
+ * "guest", bound to this Discovery (no role field — lib/invite-token.ts's
+ * payload schema rejects a guest payload carrying one). Redeeming it creates
+ * a Stakeholder-class collaborator under a display name with NO account
+ * (actions/auth.ts joinAsGuest) — that difference from the account links is
+ * the whole point of the kind discriminator.
+ *
+ * Guard skeleton identical to generateInviteLink (same access filter, same
+ * resolveCollaboratorRole rule, same no-existence-leak error shape), with
+ * ONE deliberate difference: guests get `forbidden` here too (they resolve
+ * to Stakeholder — the story's "no guest exception": only the Owner/BA
+ * mints guest links; the server-side backstop for the hidden UI button).
+ * Unlike generateInviteLink there is no guest branch — a guest requesting a
+ * guest link is exactly the escalation this backstop exists to block (AC 1).
+ *
+ * No revalidatePath, no DB write — the token is pure HMAC, same tradeoffs
+ * as generateInviteLink (see lib/invite-token.ts).
+ */
+export async function generateGuestLink(
+  _prevState: InviteLinkState | null,
+  formData: FormData,
+): Promise<InviteLinkState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      ok: false,
+      error: { code: "auth_required", message: "You must be signed in." },
+    };
+  }
+
+  const parsed = guestLinkSchema.safeParse({
+    discoveryId: formData.get("discoveryId") ?? "",
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message: "Invalid guest link request.",
+        field: parsed.error.errors[0]?.path[0]?.toString(),
+      },
+    };
+  }
+
+  try {
+    // Same access filter + BA gate as generateInviteLink (one query,
+    // read-only) — plus the no-guest-exception rule.
+    const discovery = await prisma.discovery.findFirst({
+      where: {
+        id: parsed.data.discoveryId,
+        OR: [{ ownerId: userId }, { collaborators: { some: { userId } } }],
+      },
+      select: {
+        ownerId: true,
+        collaborators: { select: { userId: true, role: true } },
+      },
+    });
+    if (!discovery) {
+      return {
+        ok: false,
+        error: { code: "not_found", message: "Discovery not found." },
+      };
+    }
+    const viewerRole = resolveCollaboratorRole({
+      isOwner: discovery.ownerId === userId,
+      collaboratorRole:
+        discovery.collaborators.find((c) => c.userId === userId)?.role ?? null,
+    });
+    if (viewerRole !== "BA") {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message:
+            "Only the Owner or a BA Collaborator can share the guest link.",
+        },
+      };
+    }
+
+    const token = signInviteToken({
+      discoveryId: parsed.data.discoveryId,
+      kind: "guest",
+    });
+    // Same origin derivation as generateInviteLink (the AUTH_URL lesson —
+    // request headers, never a hardcoded origin).
+    const headerList = await headers();
+    const host = headerList.get("host") ?? "localhost:3000";
+    const proto = headerList.get("x-forwarded-proto") ?? "http";
+    return { ok: true, url: `${proto}://${host}/invite/${token}` };
+  } catch (error) {
+    console.error("generateGuestLink failed:", error);
     return {
       ok: false,
       error: {

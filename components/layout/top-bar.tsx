@@ -63,10 +63,13 @@ export function TopBar({
   };
   // Story 3.1 (FR3): the invite sheet's data + grant. The collaborator list
   // is server-resolved (pending rows included — visible to members via the
-  // explicit select, not the access filter).
+  // explicit select, not the access filter). Story 4.2: isGuest (undefined =
+  // false) switches the sheet to its guest variant (Stakeholder-only role,
+  // no guest-link button).
   invite?: {
     discoveryId: string;
     canInvite: boolean;
+    isGuest?: boolean;
     ownerName?: string;
     ownerEmail?: string;
     collaborators: InviteSheetCollaborator[];
@@ -113,6 +116,7 @@ export function TopBar({
         {invite?.canInvite ? (
           <InviteSheet
             discoveryId={invite.discoveryId}
+            isGuest={invite.isGuest}
             ownerName={invite.ownerName}
             ownerEmail={invite.ownerEmail}
             collaborators={invite.collaborators}

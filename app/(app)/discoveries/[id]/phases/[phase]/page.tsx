@@ -236,6 +236,12 @@ export default async function PhasePage({
     collaboratorRole:
       discovery.collaborators.find((c) => c.userId === userId)?.role ?? null,
   });
+  // Story 4.2 (ACs 3/4/5): a share-link guest carries email NULL in their
+  // session — the same derivation the actions use (no second source of
+  // truth). The guest IS a Stakeholder collaborator (their Collaborator row
+  // resolves the role), so sign-off/comment grants apply unchanged; isGuest
+  // only widens TWO controls: Submit-for-review below and the invite sheet.
+  const isGuest = !session?.user?.email;
   // Story 2.12 (FR13): the Discovery-level lifecycle — drives the top bar
   // button's hidden state, the approved-lock notice, and the reopen control.
   const discoveryApproved =
@@ -378,7 +384,12 @@ export default async function PhasePage({
       }}
       invite={{
         discoveryId: id,
-        canInvite: viewerRole === "BA",
+        // Story 4.2 (AC 5): guests may invite Stakeholders too — the sheet
+        // renders its guest variant (Stakeholder-only role, no guest-link
+        // button). Server-side: generateInviteLink forces Stakeholder for
+        // guests; generateGuestLink forbids them (the AC 1 backstop).
+        canInvite: viewerRole === "BA" || isGuest,
+        isGuest,
         ownerName: discovery.owner.name ?? undefined,
         ownerEmail: discovery.owner.email ?? undefined,
         collaborators: inviteCollaborators,
@@ -470,6 +481,13 @@ export default async function PhasePage({
               // key: layouts preserve client state across navigation — without
               // this, one phase's editor state could survive into another
               // phase's editor (2.4 review finding).
+              //
+              // Story 4.2 (AC 4, deliberate combination): a guest on a Draft
+              // phase takes the branch below — read-only output + change-
+              // request panel + the SubmitForReview button — because
+              // updatePhase stays BA-only (its `role !== "BA"` guard is
+              // untouched). Guests can submit a phase whose content the BA
+              // wrote; they can never edit phase content.
               <PhaseEditor
                 key={phaseType}
                 discoveryId={id}
@@ -537,7 +555,9 @@ export default async function PhasePage({
               discoveryId={id}
               phaseType={phaseType}
               visible={
-                isDraft && viewerRole === "BA" && phaseHasData(phaseType, currentOutput)
+                isDraft &&
+                (viewerRole === "BA" || isGuest) &&
+                phaseHasData(phaseType, currentOutput)
               }
             />
             <SignoffControls

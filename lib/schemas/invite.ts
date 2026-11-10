@@ -28,3 +28,11 @@ export const inviteLinkSchema = z.object({
   discoveryId: z.string().min(1),
   role: z.nativeEnum(CollaboratorRole),
 });
+
+// Story 4.2 (AC 1/5, Decision 2026-10-09): the guest share-link form shape —
+// Discovery only, NO role (guest tokens carry none by construction; the
+// lib/invite-token.ts payload schema rejects a guest payload with a role).
+// The guest join form's own shape (display name) lives in lib/schemas/guest.ts.
+export const guestLinkSchema = z.object({
+  discoveryId: z.string().min(1),
+});

@@ -87,6 +87,14 @@ type ReviewContext =
       // need the raw ownership fact (post-MVP change, Mar 2026-10-05: the
       // Owner may also approve / request changes on an internal app).
       isOwner: boolean;
+      // Story 4.2 (AC 4): share-link guests carry email NULL in their
+      // session — a fact the role model cannot express (a guest IS a
+      // Stakeholder collaborator), carried alongside `role` for the same
+      // reason `isOwner` is: the submit-for-review grant is "BA OR guest",
+      // and the guest half is invisible to the role. Derived by the caller
+      // from session.user.email (the same source every action reads — no
+      // second source of truth).
+      isGuest: boolean;
       states: PhaseStatesByType;
       state: PhaseState;
     }
@@ -97,6 +105,7 @@ async function loadReviewContext(
   discoveryId: string,
   userId: string,
   phaseType: PhaseType,
+  isGuest: boolean,
 ): Promise<ReviewContext> {
   const discovery = await tx.discovery.findFirst({
     where: {
@@ -126,6 +135,7 @@ async function loadReviewContext(
     discoveryId: discovery.id,
     role,
     isOwner: discovery.ownerId === userId,
+    isGuest,
     states: buildStateMap(discovery.phases),
     state:
       discovery.phases.find((p) => p.phaseType === phaseType)?.state ??
@@ -389,10 +399,13 @@ export async function submitPhaseForReview(
         parsed.data.discoveryId,
         userId,
         parsed.data.phaseType,
+        // Story 4.2 (AC 4): guests (session email NULL) may submit a Draft
+        // phase for review like a BA — the grant this guard expresses.
+        !session.user?.email,
       );
       if (!context.ok) return context;
 
-      if (context.role !== "BA") {
+      if (context.role !== "BA" && !context.isGuest) {
         return {
           ok: false as const,
           error: {
@@ -493,6 +506,10 @@ export async function approvePhase(
         parsed.data.discoveryId,
         userId,
         parsed.data.phaseType,
+        // Guests are Stakeholder collaborators — the grant below already
+        // admits them (AC 3: free via the role); isGuest rides along for
+        // context completeness.
+        !session.user?.email,
       );
       if (!context.ok) return context;
 
@@ -639,6 +656,9 @@ export async function requestChanges(
         parsed.data.discoveryId,
         userId,
         parsed.data.phaseType,
+        // Guests are Stakeholder collaborators — the grant below already
+        // admits them (AC 3: free via the role).
+        !session.user?.email,
       );
       if (!context.ok) return context;
 

@@ -6,6 +6,7 @@ import { CollaboratorRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { verifyInviteToken } from "@/lib/invite-token";
 import { prisma } from "@/lib/prisma";
+import { guestJoinSchema } from "@/lib/schemas/guest";
 import {
   passwordSignInSchema,
   signUpSchema,
@@ -254,6 +255,128 @@ export async function signInWithPassword(
     return { ok: true };
   } catch (error) {
     console.error("signInWithPassword failed:", error);
+    return {
+      ok: false,
+      error: { code: "server_error", message: GENERIC_FAILURE },
+    };
+  }
+}
+
+/*
+ * Story 4.2 (AC 2, FR3, Decision 2026-10-09, AD-2 override) — join a
+ * Discovery as a share-link guest. NO account: the User row carries the
+ * display name and email NULL (the two-population discriminator — see
+ * app/(app)/page.tsx's scoping redirect), the Collaborator row is
+ * Stakeholder-class with a synthetic `guest-{8hex}@guest.local` email
+ * (reserved domain — real signups cannot produce one; satisfies the
+ * @@unique([discoveryId, email]) and the collaborator-list rendering), and
+ * the session is provisioned with actions/guest.ts's proven direct pattern
+ * (provisionSession above — Session row + Auth.js cookie, __Secure- branch
+ * included).
+ *
+ * AC 8: no schema change to Signoff/Comment — the display name renders via
+ * the existing render-time derivation (user.name ?? user.email) because the
+ * guest IS a real User row whose name is set.
+ *
+ * `invitedById` = the Discovery's Owner (same honest semantic as
+ * signUpWithInvite — the token only exists because the Owner/BA shared it).
+ *
+ * The synthetic-email P2002 retry: collisions are ~impossible (8 hex chars),
+ * but the compound unique demands a retry loop rather than a crash —
+ * 3 attempts, then the generic failure (the race is the only expected
+ * source; a persistent P2002 would be a bug, surfaced by the server log).
+ */
+export async function joinAsGuest(
+  _prevState: SignUpState | null,
+  formData: FormData,
+): Promise<SignUpState> {
+  const token = String(formData.get("token") ?? "");
+  const parsed = guestJoinSchema.safeParse({
+    name: formData.get("name") ?? "",
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.errors[0];
+    return {
+      ok: false,
+      error: {
+        code: "validation_error",
+        message: issue?.message ?? "Please check the form and try again.",
+        field: issue?.path[0]?.toString(),
+      },
+    };
+  }
+
+  // The real token gate (NFR9): kind "guest" only — collaborator tokens
+  // belong to signUpWithInvite and are rejected here (their payloads carry
+  // a role; the guest flow must not mint accounts).
+  const payload = verifyInviteToken(token);
+  if (!payload || payload.kind !== "guest") {
+    return {
+      ok: false,
+      error: { code: "validation_error", message: INVALID_TOKEN_MESSAGE },
+    };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx): Promise<{
+      userId: string;
+      discoveryId: string;
+    } | null> => {
+      // Discovery existence re-check inside the transaction: a valid token
+      // whose Discovery was deleted between landing and submit must fail
+      // cleanly — not create an orphan User, and not fall through to an FK
+      // error on the Collaborator insert (same as signUpWithInvite).
+      const discovery = await tx.discovery.findUnique({
+        where: { id: payload.discoveryId },
+        select: { id: true, ownerId: true },
+      });
+      if (!discovery) return null;
+
+      const user = await tx.user.create({
+        data: { name: parsed.data.name },
+        select: { id: true },
+      });
+      // Synthetic-email collision retry (see the note above) — the P2002
+      // catch regenerates the local-part inside the same transaction.
+      for (let attempt = 0; ; attempt++) {
+        const syntheticEmail = `guest-${randomUUID().replace(/-/g, "").slice(0, 8)}@guest.local`;
+        try {
+          await tx.collaborator.create({
+            data: {
+              discoveryId: discovery.id,
+              userId: user.id,
+              email: syntheticEmail,
+              role: CollaboratorRole.Stakeholder,
+              invitedById: discovery.ownerId,
+            },
+          });
+          break;
+        } catch (error) {
+          if (
+            attempt < 2 &&
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            (error as { code?: string }).code === "P2002"
+          ) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      return { userId: user.id, discoveryId: discovery.id };
+    });
+    if (!result) {
+      return {
+        ok: false,
+        error: { code: "validation_error", message: INVALID_TOKEN_MESSAGE },
+      };
+    }
+
+    await provisionSession(result.userId);
+    return { ok: true, discoveryId: result.discoveryId };
+  } catch (error) {
+    console.error("joinAsGuest failed:", error);
     return {
       ok: false,
       error: { code: "server_error", message: GENERIC_FAILURE },

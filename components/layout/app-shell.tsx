@@ -31,9 +31,12 @@ export function AppShell({
   };
   // Story 3.1 (FR3): pass-through for the top bar's InviteSheet island —
   // undefined (the list page) renders the bar without an invite control.
+  // Story 4.2: isGuest (undefined = false) switches the sheet to its guest
+  // variant — Stakeholder-only role select, no guest-link button.
   invite?: {
     discoveryId: string;
     canInvite: boolean;
+    isGuest?: boolean;
     ownerName?: string;
     ownerEmail?: string;
     collaborators: InviteSheetCollaborator[];
