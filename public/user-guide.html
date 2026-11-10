@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DiscoveryDesk — User Guide</title>
+<style>
+  :root {
+    --ink: #1b1f23;
+    --muted: #5b6670;
+    --accent: #00787a;
+    --accent-soft: #e6f4f4;
+    --line: #dde3e8;
+    --warn-soft: #fdf6e3;
+    --warn-ink: #6b5b1e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    line-height: 1.55;
+    background: #fafbfc;
+  }
+  .page { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  header.masthead { border-bottom: 3px solid var(--accent); padding-bottom: .75rem; margin-bottom: 1.5rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .masthead p { margin: 0; color: var(--muted); font-size: .95rem; }
+  h2 {
+    font-size: 1.05rem; margin: 2rem 0 .5rem; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  h3 { font-size: 1rem; margin: 1.25rem 0 .35rem; }
+  p { margin: .4rem 0 .8rem; }
+  ul, ol { margin: .4rem 0 .9rem; padding-left: 1.4rem; }
+  li { margin: .25rem 0; }
+  .kicker { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: .6rem .9rem; border-radius: 4px; margin: .9rem 0; font-size: .92rem;
+  }
+  .callout.warning { background: var(--warn-soft); border-left-color: var(--warn-ink); color: var(--warn-ink); }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0 1rem; font-size: .92rem; }
+  th, td { border: 1px solid var(--line); padding: .45rem .65rem; text-align: left; vertical-align: top; }
+  th { background: #f0f3f5; font-weight: 600; }
+  .btn {
+    display: inline-block; background: var(--accent); color: #fff; font-weight: 600;
+    border-radius: 5px; padding: .1rem .5rem; font-size: .88em; white-space: nowrap;
+  }
+  .btn.ghost { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  .btn.danger { background: #b3261e; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: #eef1f3; border-radius: 4px; padding: .05rem .35rem;
+  }
+  .tag { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border-radius: 4px; padding: .05rem .4rem; }
+  .tag.draft { background: #eef1f3; color: var(--muted); }
+  .tag.review { background: #fff3d6; color: #6b5b1e; }
+  .tag.approved { background: #dcf2e3; color: #1e6b3a; }
+  footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .75rem; color: var(--muted); font-size: .85rem; }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; padding: 0; }
+    h2 { break-after: avoid; }
+    .callout, table { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <h1>DiscoveryDesk User Guide</h1>
+  <p>A quick guide to running a product discovery from first persona to signed-off business case.</p>
+</header>
+
+<h2>What is DiscoveryDesk?</h2>
+<p>DiscoveryDesk is a structured workspace for product discovery — the work that happens before anyone
+decides what to build. Instead of freeform templates, it walks you through six proven frameworks
+(Jobs-to-be-Done, Value Proposition Canvas, Business Model Canvas) as sequential phases, each producing
+an output your stakeholders review, comment on, and sign off. It is not a backlog manager or project
+tracker — it is where the team decides <em>whether</em> to build something, and for whom.</p>
+
+<h2>Getting in</h2>
+<h3>Accounts &amp; sign-in</h3>
+<ul>
+  <li><strong>Invited collaborators</strong> sign in with the email and password they created when opening an
+  invite link. There is no open signup — accounts are created only through an invite link someone shared with you.</li>
+  <li><strong>Guest access (testing phase):</strong> the sign-in page offers <span class="btn ghost">Join as guest</span> —
+  no email needed, and each guest gets their own sandbox workspace.</li>
+</ul>
+<h3>Roles</h3>
+<table>
+  <tr><th>Role</th><th>How you get it</th><th>What you can do</th></tr>
+  <tr>
+    <td><strong>Owner / BA</strong></td>
+    <td>Creates the Discovery</td>
+    <td>Everything: edit all phases, invite collaborators, submit phases for review, approve, reopen, delete</td>
+  </tr>
+  <tr>
+    <td><strong>Stakeholder</strong></td>
+    <td>Invite link (Stakeholder role)</td>
+    <td>View, comment, <strong>Approve</strong> or <strong>Request Changes</strong> on phases. Cannot edit phase content, submit phases for review, or invite others</td>
+  </tr>
+  <tr>
+    <td><strong>Guest</strong></td>
+    <td>Share link, no login (testing phase)</td>
+    <td>View, comment, and sign off under a display name; can also submit phases for review. Sees only the one shared Discovery</td>
+  </tr>
+</table>
+<div class="callout warning"><strong>Note:</strong> guest access via share link is temporary — it exists for the
+current testing phase. After testing, everyone will sign in with email and password via invite links.</div>
+
+<h2>Creating and sharing a Discovery</h2>
+<ol>
+  <li>On the <strong>Discoveries</strong> list page, click <span class="btn">Create Discovery</span>, give it a name, and click <span class="btn">Create</span>.</li>
+  <li>To bring people in, use the <strong>Invite collaborators</strong> button (top bar), pick the role the link
+  should grant, and click <span class="btn ghost">Copy invite link</span>. Share the link through your own channel
+  (Slack, email, chat) — recipients create their account through the link and land directly in the Discovery.</li>
+  <li>For solo work you want someone to peek at without an account, copy the <strong>Guest link</strong> instead —
+  anyone with it can view, comment, and sign off under a display name.</li>
+</ol>
+
+<h2>The six phases</h2>
+<p>Every Discovery follows the same sequence. Each phase builds on the ones before it:</p>
+<ol>
+  <li><strong>Persona</strong> — Understand the customer you are designing for (functional, emotional, and social jobs, plus desired outcomes).</li>
+  <li><strong>Pain/Gain</strong> — Capture and score the customer's pains and gains. Pains are scored on severity, frequency, and business impact; the ranking is calculated for you.</li>
+  <li><strong>Value Proposition</strong> — Map your value proposition against the customer profile. The Customer Profile pre-fills from Phases 1–2, and unaddressed pains are flagged as gaps.</li>
+  <li><strong>Business Model</strong> — Describe how the business creates, delivers, and captures value across the nine canvas blocks. A gross-margin indicator appears when you enter numeric revenue and cost figures.</li>
+  <li><strong>Vision</strong> — State the product vision (one sentence) and the problem statement (who, what, when, where, why). Your top pains from Phase 2 are surfaced as prompts.</li>
+  <li><strong>Business Case</strong> — Define success metrics, estimated investment, projected impact, and key assumptions (tagged Confirmed / Unconfirmed / Unknown).</li>
+</ol>
+
+<h2>Working through a phase</h2>
+<ol>
+  <li><strong>Fill it in.</strong> Guidance text is shown inline for each section. Everything saves automatically —
+  close the tab and your work is still there.</li>
+  <li><strong>Submit it.</strong> When the output is complete, click <span class="btn">Submit for Review</span>.
+  The phase state becomes <span class="tag review">In review</span>.</li>
+  <li><strong>Get sign-off.</strong> Stakeholders (and you, as Owner) review the output and either click
+  <span class="btn">Approve</span> or <span class="btn danger">Request Changes</span> with a required comment.
+  A change request sends the phase back to <span class="tag draft">Draft</span> with the comment visible.</li>
+</ol>
+<div class="callout"><strong>Sequential gating:</strong> a phase can't be submitted until the phase before it has
+been signed off. Locked phases in the stepper show <em>"Complete &lt;phase&gt; first."</em></div>
+
+<h3>Comments</h3>
+<p>Every phase has a comment thread. Click <span class="btn ghost">Add comment</span> to leave feedback. Comments
+form a flat list and can be marked <strong>Resolve</strong>d / <strong>Unresolve</strong>d by their author or the
+Owner; use <em>Show resolved</em> / <em>Hide resolved</em> to manage the noise.</p>
+
+<h3>Revising an approved phase</h3>
+<p>Need to change something after sign-off? The Owner can use <span class="btn danger">Reopen Phase</span> —
+this creates a new revision and <strong>discards the existing sign-offs on that phase</strong>, so use it deliberately.</p>
+
+<h2>Finishing: approving the Discovery</h2>
+<p>When all six phases are approved, click <span class="btn">Mark Approved</span> in the top bar. The Discovery
+becomes <span class="tag approved">Approved</span> and is locked against editing — any further change requires
+reopening a specific phase. The approval record (who, when) is kept with the Discovery.</p>
+
+<h2>Good to know</h2>
+<ul>
+  <li><strong>There are no email notifications.</strong> Collaborators see new states and comments when they open
+  the app or when the page refreshes itself (~every 10 seconds). As the BA, tell your stakeholders when their
+  review is waiting.</li>
+  <li><strong>Deletion is permanent.</strong> Deleting a Discovery removes all six phases, their outputs, and all
+  collaborator invites. This cannot be undone.</li>
+  <li><strong>Names are editable.</strong> Click the Discovery name in the top bar to rename it at any time.</li>
+  <li><strong>Summary view.</strong> The <em>Summary</em> link in the top bar shows a one-glance Executive Summary:
+  the problem statement, product vision, and each phase's sign-off status.</li>
+</ul>
+
+<footer>
+  DiscoveryDesk User Guide &middot; structured product discovery from persona to validated business case
+</footer>
+
+</div>
+</body>
+</html>

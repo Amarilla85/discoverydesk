@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { FolderOpen } from "lucide-react";
+import { BookOpen, FolderOpen } from "lucide-react";
 
 /**
  * Shared sidebar content, rendered by the static sidebar (Sidebar) and the
@@ -17,6 +17,15 @@ export function SidebarNav() {
       >
         <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
         <span className="hidden lg:inline">Discoveries</span>
+      </Link>
+      <Link
+        href="/user-guide.html"
+        target="_blank"
+        rel="noopener"
+        className="flex items-center gap-2 rounded-md px-4 py-2 text-body text-on-surface-variant hover:bg-surface-variant md:justify-center md:px-2 lg:justify-start lg:px-4"
+      >
+        <BookOpen className="size-4 shrink-0" aria-hidden="true" />
+        <span className="hidden lg:inline">User guide</span>
       </Link>
     </nav>
   );
